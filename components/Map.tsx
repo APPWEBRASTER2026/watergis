@@ -1211,9 +1211,10 @@ export default function Map() {
           <MiniKPI title="TDS"       value={promedioTds.toFixed(0)} icon={<Waves size={20} className="text-amber-400"/>}/>
         </div>
 
-        {/* DISTRIBUCIÓN DE RIESGO — solo usuarios autenticados */}
+        {/* DISTRIBUCIÓN DE RIESGO Y FUENTES — solo usuarios autenticados */}
         {esAutenticado ? (
-        <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <>
+          <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <div className="mb-3 text-sm font-semibold text-cyan-300">{t.distribucionRiesgo}</div>
           {(()=>{
             const riskData=[
@@ -1273,8 +1274,8 @@ export default function Map() {
             ))}
           </div>
         </div>
-        </>) : (
-          /* Banner bloqueado para visitantes */
+          </>
+        ) : (
           <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 text-center">
             <p className="text-2xl mb-2">🔒</p>
             <p className="text-sm font-semibold text-amber-300 mb-1">Datos restringidos</p>
