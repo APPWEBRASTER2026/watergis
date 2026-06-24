@@ -302,11 +302,102 @@ function PopupCard({ label, value }: { label: string; value: any }) {
   );
 }
 
+
+// ======================================================
+// USUARIOS PERMITIDOS
+// ======================================================
+
+const USUARIOS: Record<string, { password: string; nombre: string }> = {
+  "nicolas.doria": { password: "watergis2026",  nombre: "Nicolás Doria"  },
+  "admin":         { password: "catamarca2026", nombre: "Administrador"  },
+  "inspector1":    { password: "inspector123",  nombre: "Inspector GIS"  },
+};
+const STORAGE_KEY = "watergis_session";
+
+function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => void }) {
+  const [usuario, setUsuario]   = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const handleLogin = () => {
+    setError(""); setLoading(true);
+    setTimeout(() => {
+      const u = USUARIOS[usuario.trim().toLowerCase()];
+      if (u && u.password === password) { onLogin(usuario.trim().toLowerCase(), u.nombre); }
+      else { setError("Usuario o contraseña incorrectos."); }
+      setLoading(false);
+    }, 600);
+  };
+  return (
+    <div className="fixed inset-0 bg-[#020617] flex items-center justify-center z-[99999]">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-100px] left-[-100px] w-[400px] h-[400px] rounded-full bg-cyan-500/5 blur-3xl" />
+        <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] rounded-full bg-blue-500/5 blur-3xl" />
+      </div>
+      <div className="relative w-full max-w-md mx-4">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 mb-4">
+            <span className="text-3xl">💧</span>
+          </div>
+          <h1 className="text-3xl font-black text-cyan-400 tracking-tight">WATERGIS</h1>
+          <p className="text-slate-400 text-sm mt-1">Plataforma Hidroquímica — Provincia de Catamarca</p>
+        </div>
+        <div className="rounded-2xl border border-slate-700 bg-slate-950 p-8 shadow-2xl">
+          <h2 className="text-white font-bold text-lg mb-6 text-center">Iniciar sesión</h2>
+          <div className="mb-4">
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Usuario</label>
+            <input type="text" value={usuario} onChange={e=>setUsuario(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Ingresá tu usuario" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+          </div>
+          <div className="mb-6">
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Contraseña</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Ingresá tu contraseña" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+          </div>
+          {error && <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400 text-center">{error}</div>}
+          <button onClick={handleLogin} disabled={loading} className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 transition-colors disabled:opacity-50">
+            {loading?"Verificando...":"Ingresar"}
+          </button>
+          <div className="mt-6 pt-5 border-t border-slate-800">
+            <p className="text-xs text-slate-500 text-center">¿No tenés acceso? Contactá al administrador.</p>
+            <p className="text-xs text-slate-600 text-center mt-1">watergis@catamarca.gob.ar</p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-center">
+          <p className="text-xs text-slate-400">🌐 Podés explorar el mapa sin iniciar sesión —
+            <button onClick={()=>onLogin("publico","Visitante")} className="text-cyan-500 hover:text-cyan-400 ml-1 underline underline-offset-2">continuar sin cuenta</button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ======================================================
 // COMPONENT
 // ======================================================
 
 export default function Map() {
+  // ── AUTH ──
+  const [sesion, setSesion] = useState<{user:string;nombre:string}|null>(null);
+  const [loginVisible, setLoginVisible] = useState(true);
+  const esAutenticado = sesion !== null && sesion.user !== "publico";
+
+  useEffect(()=>{
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if(saved){ const p=JSON.parse(saved); if(p.user&&p.nombre){ setSesion(p); setLoginVisible(false); } }
+    } catch {}
+  },[]);
+
+  const handleLogin=(user:string,nombre:string)=>{
+    const s={user,nombre}; setSesion(s); setLoginVisible(false);
+    if(user!=="publico"){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); }catch{} }
+  };
+
+  const handleLogout=()=>{
+    setSesion(null); setLoginVisible(true);
+    try{ localStorage.removeItem(STORAGE_KEY); }catch{}
+    setUserMenuOpen(false);
+  };
+
   const [points, setPoints]             = useState<Punto[]>([]);
   const [search, setSearch]             = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -766,6 +857,19 @@ export default function Map() {
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#020617]">
 
+      {/* ===== PANTALLA DE LOGIN ===== */}
+      {loginVisible && <LoginScreen onLogin={handleLogin} />}
+
+      {/* ===== BANNER VISITANTE ===== */}
+      {!loginVisible && !esAutenticado && (
+        <div className="absolute top-14 left-0 right-0 z-[9998] bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-300">
+          <span>🔒 Modo visitante — información limitada. Iniciá sesión para acceder a todos los datos.</span>
+          <button onClick={()=>setLoginVisible(true)} className="ml-4 rounded-lg bg-amber-500/20 border border-amber-500/40 px-3 py-1 font-bold hover:bg-amber-500/30 whitespace-nowrap">
+            Iniciar sesión
+          </button>
+        </div>
+      )}
+
       {/* ===== HEADER ===== */}
       <div className="absolute top-0 left-0 right-0 z-[10000] h-14 border-b border-slate-800 bg-slate-950/95 backdrop-blur flex items-center justify-between px-5 text-white">
 
@@ -791,10 +895,20 @@ export default function Map() {
               ] as { key: PanelMenu & string; icon: string; label: string }[]).map(item=>(
                 <button
                   key={item.key}
-                  onClick={() => { setPanelMenu(p=>p===item.key?null:item.key as PanelMenu); setHamburgerOpen(false); }}
-                  className={`w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-slate-800 text-sm ${panelMenu===item.key?"text-cyan-400 bg-slate-800/60":""}`}
+                  onClick={() => {
+                    if(item.key==="informes" && !esAutenticado){
+                      setHamburgerOpen(false);
+                      setLoginVisible(true);
+                      return;
+                    }
+                    setPanelMenu(p=>p===item.key?null:item.key as PanelMenu);
+                    setHamburgerOpen(false);
+                  }}
+                  className={`w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-slate-800 text-sm ${panelMenu===item.key?"text-cyan-400 bg-slate-800/60":""} ${item.key==="informes"&&!esAutenticado?"opacity-50":""}`}
                 >
-                  <span className="text-base">{item.icon}</span> {item.label}
+                  <span className="text-base">{item.icon}</span>
+                  {item.label}
+                  {item.key==="informes"&&!esAutenticado && <span className="ml-auto text-xs text-amber-400">🔒</span>}
                 </button>
               ))}
             </div>
@@ -976,16 +1090,28 @@ export default function Map() {
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-1 text-sm hover:bg-slate-800"
           >
-            👤 <span>Nicolás Doria</span> ▼
+            {esAutenticado ? "👤" : "🌐"} <span>{sesion?.nombre ?? "Visitante"}</span> ▼
           </button>
 
           {userMenuOpen && (
             <div className="absolute right-0 top-12 w-56 rounded-xl border border-slate-800 bg-slate-950 shadow-2xl overflow-hidden z-[11000]">
-              <button onClick={()=>{setShowPerfil(v=>!v);setShowAjustes(false);setUserMenuOpen(false);}}
-                className="w-full px-4 py-3 text-left hover:bg-slate-800">👤 {t.miPerfil}</button>
-              <button onClick={()=>{setShowAjustes(v=>!v);setShowPerfil(false);setUserMenuOpen(false);}}
-                className="w-full px-4 py-3 text-left hover:bg-slate-800">⚙️ {t.ajustes}</button>
-              <button className="w-full px-4 py-3 text-left text-red-400 hover:bg-slate-800">🚪 {t.cerrarSesion}</button>
+              {esAutenticado ? (
+                <>
+                  <button onClick={()=>{setShowPerfil(v=>!v);setShowAjustes(false);setUserMenuOpen(false);}}
+                    className="w-full px-4 py-3 text-left hover:bg-slate-800">👤 {t.miPerfil}</button>
+                  <button onClick={()=>{setShowAjustes(v=>!v);setShowPerfil(false);setUserMenuOpen(false);}}
+                    className="w-full px-4 py-3 text-left hover:bg-slate-800">⚙️ {t.ajustes}</button>
+                  <button onClick={handleLogout}
+                    className="w-full px-4 py-3 text-left text-red-400 hover:bg-slate-800">🚪 {t.cerrarSesion}</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={()=>{setLoginVisible(true);setUserMenuOpen(false);}}
+                    className="w-full px-4 py-3 text-left text-cyan-400 hover:bg-slate-800 font-semibold">🔑 Iniciar sesión</button>
+                  <button onClick={()=>{setShowAjustes(v=>!v);setUserMenuOpen(false);}}
+                    className="w-full px-4 py-3 text-left hover:bg-slate-800">⚙️ {t.ajustes}</button>
+                </>
+              )}
             </div>
           )}
 
@@ -1085,7 +1211,8 @@ export default function Map() {
           <MiniKPI title="TDS"       value={promedioTds.toFixed(0)} icon={<Waves size={20} className="text-amber-400"/>}/>
         </div>
 
-        {/* DISTRIBUCIÓN DE RIESGO */}
+        {/* DISTRIBUCIÓN DE RIESGO — solo usuarios autenticados */}
+        {esAutenticado ? (
         <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <div className="mb-3 text-sm font-semibold text-cyan-300">{t.distribucionRiesgo}</div>
           {(()=>{
@@ -1146,6 +1273,18 @@ export default function Map() {
             ))}
           </div>
         </div>
+        </>) : (
+          /* Banner bloqueado para visitantes */
+          <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 text-center">
+            <p className="text-2xl mb-2">🔒</p>
+            <p className="text-sm font-semibold text-amber-300 mb-1">Datos restringidos</p>
+            <p className="text-xs text-slate-400 mb-3">Iniciá sesión para ver indicadores de riesgo, arsénico, distribución de fuentes y generar informes.</p>
+            <button onClick={()=>setLoginVisible(true)}
+              className="rounded-xl bg-cyan-500/20 border border-cyan-500 px-4 py-2 text-sm font-bold text-cyan-300 hover:bg-cyan-500/30">
+              🔑 Iniciar sesión
+            </button>
+          </div>
+        )}
 
         {/* INFORMACIÓN */}
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-5">
@@ -1203,34 +1342,53 @@ export default function Map() {
           }));
 
           return (
-            <Marker key={index} position={[lat,lng]} icon={getMarkerIcon(point)}>
+            <Marker key={index} position={[lat,lng]} icon={esAutenticado ? getMarkerIcon(point) : greenIcon}>
               <Popup maxWidth={280}>
                 <div style={{width:"240px"}}>
                   <h2 style={{fontSize:"24px",fontWeight:800,marginBottom:"4px"}}>{point.Localidad}</h2>
                   <div style={{opacity:0.8,marginBottom:"14px",fontSize:"13px",lineHeight:1.6}}>
-                    <div><strong>{t.punto}:</strong> {point.PUNTO_DE_MUESTREO}</div>
-                    <div><strong>{t.campanas}:</strong> {campaigns.length}</div>
-                    <div><strong>{t.fuente}:</strong> {point.Fuente}</div>
                     <div><strong>{t.departamentos}:</strong> {point.Departamento}</div>
+                    {esAutenticado && (
+                      <>
+                        <div><strong>{t.punto}:</strong> {point.PUNTO_DE_MUESTREO}</div>
+                        <div><strong>{t.campanas}:</strong> {campaigns.length}</div>
+                        <div><strong>{t.fuente}:</strong> {point.Fuente}</div>
+                      </>
+                    )}
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"14px"}}>
-                    <PopupCard label="As"    value={point.As_mg_l}/>
-                    <PopupCard label="TDS"   value={point.TDS_mg_l}/>
-                    <PopupCard label="pH"    value={point.Ph}/>
-                    <PopupCard label="Fluor" value={point.Fluor_mg_l}/>
-                    <PopupCard label="NO3"   value={point.NO3_mg_l}/>
-                  </div>
-                  <div style={{width:"100%",height:"240px"}}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
-                        <XAxis dataKey="fecha" fontSize={10}/>
-                        <YAxis fontSize={10}/>
-                        <Tooltip/>
-                        <Line type="monotone" dataKey={selectedVariable} stroke="#22d3ee" strokeWidth={3}/>
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {esAutenticado ? (
+                    <>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"14px"}}>
+                        <PopupCard label="As"    value={point.As_mg_l}/>
+                        <PopupCard label="TDS"   value={point.TDS_mg_l}/>
+                        <PopupCard label="pH"    value={point.Ph}/>
+                        <PopupCard label="Fluor" value={point.Fluor_mg_l}/>
+                        <PopupCard label="NO3"   value={point.NO3_mg_l}/>
+                      </div>
+                      <div style={{width:"100%",height:"240px"}}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
+                            <XAxis dataKey="fecha" fontSize={10}/>
+                            <YAxis fontSize={10}/>
+                            <Tooltip/>
+                            <Line type="monotone" dataKey={selectedVariable} stroke="#22d3ee" strokeWidth={3}/>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{textAlign:"center",padding:"16px 0"}}>
+                      <p style={{fontSize:"24px",marginBottom:"8px"}}>🔒</p>
+                      <p style={{fontSize:"12px",color:"#94a3b8",marginBottom:"12px"}}>Iniciá sesión para ver datos hidroquímicos</p>
+                      <button
+                        onClick={()=>setLoginVisible(true)}
+                        style={{background:"rgba(6,182,212,0.15)",border:"1px solid #06b6d4",borderRadius:"10px",padding:"8px 16px",color:"#67e8f9",fontSize:"12px",fontWeight:"bold",cursor:"pointer"}}
+                      >
+                        🔑 Iniciar sesión
+                      </button>
+                    </div>
+                  )}
                 </div>
               </Popup>
             </Marker>
