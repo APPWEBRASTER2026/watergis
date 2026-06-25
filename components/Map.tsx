@@ -640,12 +640,13 @@ export default function Map() {
       return dOk&&lOk&&fOk&&rOk&&!isNaN(lat)&&!isNaN(lng);
     });
 
-    // Si no hay datos mostrar alerta pero no bloquear — usar todos los puntos válidos
-    const base = base.length > 0 ? filtrado : points.filter(p=>{
+    // Si no hay datos usar todos los puntos válidos
+    const puntosValidos: Punto[] = points.filter(p=>{
       const lat=parseFloat(p.Latitud?.toString().replace(",","."));
       const lng=parseFloat(p.Longitud?.toString().replace(",","."));
       return !isNaN(lat)&&!isNaN(lng);
     });
+    const base: Punto[] = filtrado.length > 0 ? filtrado : puntosValidos;
 
     const avgAs    = base.length>0?base.reduce((a,p)=>a+parseAs(p.As_mg_l),0)/base.length:0;
     const avgFluor = base.length>0?base.reduce((a,p)=>a+parseAs(p.Fluor_mg_l),0)/base.length:0;
