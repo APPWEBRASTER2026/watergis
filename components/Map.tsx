@@ -406,8 +406,17 @@ export default function Map() {
   const [selectedVariable, setSelectedVariable] = useState("As");
   const [selectedFuente, setSelectedFuente]     = useState("TODAS");
 
-  // Menú hamburguesa
-  const [hamburgerOpen, setHamburgerOpen] = useState(false);
+  // Filtro sidebar
+  const [selectedFiltDept, setSelectedFiltDept] = useState("TODOS");
+
+  // Localidades filtradas por departamento seleccionado en sidebar
+  const localidadesFiltradas = useMemo(()=>{
+    const base = selectedFiltDept==="TODOS" ? points : points.filter(p=>p.Departamento===selectedFiltDept);
+    return [...new Set(base.map(p=>p.Localidad).filter(Boolean))].sort();
+  },[points, selectedFiltDept]);
+
+  // Reset localidad cuando cambia el departamento del sidebar
+  useEffect(()=>{ setSearch(""); },[selectedFiltDept]);
   const [panelMenu, setPanelMenu]         = useState<PanelMenu>(null);
 
   // Filtros del informe
@@ -505,11 +514,12 @@ export default function Map() {
       const lat = parseFloat(p.Latitud?.toString().replace(",","."));
       const lng = parseFloat(p.Longitud?.toString().replace(",","."));
       if (isNaN(lat)||isNaN(lng)) return false;
-      const locOk = search.trim()==="" ? true : p.Localidad?.trim().toLowerCase().startsWith(search.trim().toLowerCase());
-      const fOk   = selectedFuente==="TODAS" || p.Fuente===selectedFuente;
-      return locOk && fOk;
+      const deptOk = selectedFiltDept==="TODOS" || p.Departamento===selectedFiltDept;
+      const locOk  = search.trim()==="" ? true : p.Localidad===search;
+      const fOk    = selectedFuente==="TODAS" || p.Fuente===selectedFuente;
+      return deptOk && locOk && fOk;
     });
-  }, [points, search, selectedFuente]);
+  }, [points, search, selectedFuente, selectedFiltDept]);
 
   // ======================================================
   // KPI
@@ -1287,14 +1297,95 @@ export default function Map() {
           </div>
         )}
 
-        {/* INFORMACIÓN */}
-        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-5">
-          <h3 className="mb-4 text-lg font-bold text-cyan-400">{t.informacion}</h3>
-          <div className="space-y-4 text-sm">
-            <div><p className="font-semibold text-cyan-300">{t.autor}</p><p className="text-slate-400">Nicolás Doria</p></div>
-            <div><p className="font-semibold text-cyan-300">{t.fecha}</p><p className="text-slate-400">Mayo 2026</p></div>
-            <div><p className="font-semibold text-cyan-300">{t.proyeccion}</p><p className="text-slate-400">WGS 84 / EPSG:4326</p></div>
-            <div><p className="font-semibold text-cyan-300">{t.referencia}</p><p className="text-slate-400">{t.refTexto}</p></div>
+        {/* ===== FILTROS ===== */}
+        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-cyan-400 text-sm">🔍</span>
+            <h3 className="text-sm font-bold text-cyan-400">Filtrar puntos</h3>
+            {(search||selectedFuente!=="TODAS"||selectedFuente!=="TODAS") && (
+              <button
+                onClick={()=>{setSearch("");setSelectedFuente("TODAS");}}
+                className="ml-auto text-[10px] text-slate-500 hover:text-red-400 transition-colors"
+              >
+                ✕ Limpiar
+              </button>
+            )}
+          </div>
+
+          {/* Departamento */}
+          <div className="mb-2">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
+              {t.departamentos}
+            </label>
+            <select
+              value={selectedFiltDept}
+              onChange={e=>{ setSelectedFiltDept(e.target.value); setSearch(""); }}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+            >
+              <option value="TODOS">Todos los departamentos</option>
+              {departamentosUniq.map(d=><option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+
+          {/* Localidad — filtrada por departamento */}
+          <div className="mb-2">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
+              Localidad
+            </label>
+            <select
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+            >
+              <option value="">Todas las localidades</option>
+              {localidadesFiltradas.map(l=><option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+
+          {/* Fuente */}
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
+              {t.fuente}
+            </label>
+            <select
+              value={selectedFuente}
+              onChange={e=>setSelectedFuente(e.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+            >
+              <option value="TODAS">Todas las fuentes</option>
+              <option value="SUBTERRANEA">{t.subterranea}</option>
+              <option value="SUPERFICIAL">{t.superficial}</option>
+              <option value="MEZCLA">{t.mezcla}</option>
+            </select>
+          </div>
+
+          {/* Contador resultados */}
+          <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
+            <span className="text-[10px] text-slate-500">Puntos visibles</span>
+            <span className="text-sm font-bold text-cyan-400">{visiblePoints.length}</span>
+          </div>
+        </div>
+
+        {/* INFORMACIÓN — formato compacto */}
+        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3">
+          <h3 className="mb-2 text-xs font-bold text-cyan-400 uppercase tracking-wider">{t.informacion}</h3>
+          <div className="space-y-1.5 text-[10px]">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">{t.autor}</span>
+              <span className="text-slate-300 font-medium">Nicolás Doria</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">{t.fecha}</span>
+              <span className="text-slate-300 font-medium">Mayo 2026</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">{t.proyeccion}</span>
+              <span className="text-slate-300 font-medium">WGS 84 / EPSG:4326</span>
+            </div>
+            <div className="pt-1 border-t border-slate-800">
+              <span className="text-slate-500">{t.referencia}: </span>
+              <span className="text-slate-400">{t.refTexto}</span>
+            </div>
           </div>
         </div>
       </div>
