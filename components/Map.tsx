@@ -640,7 +640,7 @@ export default function Map() {
       return dOk&&lOk&&fOk&&rOk&&!isNaN(lat)&&!isNaN(lng);
     });
 
-    // Si no hay datos usar todos los puntos válidos
+    // Si no hay datos usar todos los puntos válidos — v2
     const puntosValidos: Punto[] = points.filter(p=>{
       const lat=parseFloat(p.Latitud?.toString().replace(",","."));
       const lng=parseFloat(p.Longitud?.toString().replace(",","."));
