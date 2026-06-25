@@ -1,6 +1,7 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+import { jsPDF } from "jspdf";
 
 import {
   useEffect,
@@ -617,12 +618,10 @@ export default function Map() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError]     = useState("");
 
-  const generarPDF = async () => {
+  const generarPDF = () => {
     setPdfLoading(true);
     setPdfError("");
     try {
-      const { default: jsPDFClass } = await import("jspdf");
-      const jsPDF = jsPDFClass;
 
     // FIX: usar points completos respetando solo los filtros seleccionados
     const filtrado = points.filter(p => {
