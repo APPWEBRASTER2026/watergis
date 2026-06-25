@@ -447,14 +447,6 @@ export default function Map() {
 
   useEffect(() => { document.body.style.fontFamily = fontFamilies[tipografia]; }, [tipografia]);
 
-  // Cargar jsPDF desde CDN una sola vez
-  useEffect(() => {
-    if ((window as any).jspdf) return;
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    s.async = true;
-    document.head.appendChild(s);
-  }, []);
 
   // Resetear localidad cuando cambia el departamento
   useEffect(() => { setInfLoc("TODAS"); }, [infDept]);
@@ -622,8 +614,15 @@ export default function Map() {
   // GENERAR PDF
   // ======================================================
 
-  const generarPDF = () => {
-    const { jsPDF } = (window as any).jspdf;
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError]     = useState("");
+
+  const generarPDF = async () => {
+    setPdfLoading(true);
+    setPdfError("");
+    try {
+      const jsPDFModule = await import("jspdf");
+      const jsPDF = jsPDFModule.jsPDF;
 
     // FIX: usar points completos respetando solo los filtros seleccionados
     const filtrado = points.filter(p => {
@@ -1161,6 +1160,12 @@ export default function Map() {
 
     const nombre=`Informe_Hidroquimico_${nombreBase.replace(/\s/g,"_")}_${fecha.replace(/\//g,"-")}.pdf`;
     doc.save(nombre);
+    } catch(err:any) {
+      setPdfError("Error al generar PDF: " + (err?.message||"intente nuevamente"));
+      console.error("PDF error:", err);
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   // ======================================================
@@ -1284,19 +1289,16 @@ export default function Map() {
                 <p>Puntos: {visiblePoints.length}</p>
               </div>
 
+              {pdfError && (
+                <div className="mb-2 rounded-xl border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-400">
+                  {pdfError}
+                </div>
+              )}
               <button
-                onClick={()=>{
-                  if(!(window as any).jspdf){
-                    const s=document.createElement("script");
-                    s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-                    s.onload=()=>generarPDF();
-                    document.head.appendChild(s);
-                  } else {
-                    generarPDF();
-                  }
-                }}
-                className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 mb-2 text-sm">
-                {t.generarPDF}
+                onClick={generarPDF}
+                disabled={pdfLoading}
+                className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 mb-2 text-sm disabled:opacity-50 disabled:cursor-wait">
+                {pdfLoading ? "⏳ Generando PDF..." : t.generarPDF}
               </button>
               <button
                 className="w-full rounded-xl border border-cyan-500 py-3 font-bold text-cyan-300 hover:bg-cyan-500/10 text-sm">
