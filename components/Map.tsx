@@ -409,6 +409,10 @@ export default function Map() {
   // Filtro sidebar
   const [selectedFiltDept, setSelectedFiltDept] = useState("TODOS");
 
+  // Menú hamburguesa
+  const [hamburgerOpen, setHamburgerOpen] = useState(false);
+  const [panelMenu, setPanelMenu]         = useState<PanelMenu>(null);
+
   // Localidades filtradas por departamento seleccionado en sidebar
   const localidadesFiltradas = useMemo(()=>{
     const base = selectedFiltDept==="TODOS" ? points : points.filter(p=>p.Departamento===selectedFiltDept);
