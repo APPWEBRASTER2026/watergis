@@ -621,8 +621,8 @@ export default function Map() {
     setPdfLoading(true);
     setPdfError("");
     try {
-      const jsPDFModule = await import("jspdf");
-      const jsPDF = jsPDFModule.jsPDF;
+      const { default: jsPDFClass } = await import("jspdf");
+      const jsPDF = jsPDFClass;
 
     // FIX: usar points completos respetando solo los filtros seleccionados
     const filtrado = points.filter(p => {
