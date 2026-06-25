@@ -421,7 +421,6 @@ export default function Map() {
 
   // Reset localidad cuando cambia el departamento del sidebar
   useEffect(()=>{ setSearch(""); },[selectedFiltDept]);
-  const [panelMenu, setPanelMenu]         = useState<PanelMenu>(null);
 
   // Filtros del informe
   const [infDept, setInfDept]     = useState("TODOS");
