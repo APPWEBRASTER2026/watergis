@@ -705,7 +705,7 @@ export default function Map() {
       : soloDepto ? `DPTO. ${infDept.toUpperCase()}` : "CATAMARCA GENERAL";
 
     // ── Construir PDF ──
-    const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+    const doc = new jsPDF("p", "mm", "a4");
     const W=210; const L=14; const R=W-14; const CW=W-28;
     const PAGE_H=297;
     const FOOTER_H=14;       // altura del footer
