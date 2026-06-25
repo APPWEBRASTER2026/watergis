@@ -659,9 +659,24 @@ export default function Map() {
       byYear[yr].push(parseAs(p.As_mg_l));
     });
     const histData=Object.keys(byYear).sort().map(yr=>({yr,avg:(byYear[yr].reduce((a,v)=>a+v,0)/byYear[yr].length).toFixed(3)}));
-    const localidad    = infLoc!=="TODAS"?infLoc:(filtrado[0]?.Localidad||"General");
-    const departamento = infDept!=="TODOS"?infDept:(filtrado[0]?.Departamento||"General");
-    const fecha        = new Date().toLocaleDateString("es-AR");
+
+    // ── Título dinámico según filtros ──
+    const soloDepto  = infDept!=="TODOS" && infLoc==="TODAS";
+    const soloLoc    = infLoc!=="TODAS";
+    const titulo1    = "INFORME HIDROQUÍMICO";
+    const titulo2    = soloLoc
+      ? `${infLoc.toUpperCase()}  ·  ${(infDept!=="TODOS"?infDept:filtrado[0]?.Departamento||"").toUpperCase()}`
+      : soloDepto
+      ? `DEPARTAMENTO ${infDept.toUpperCase()}`
+      : `PROVINCIA DE CATAMARCA — TODOS LOS DEPARTAMENTOS`;
+    const subtitulo  = infFuente!=="TODAS" ? `Fuente: ${infFuente}` : "";
+    // Para el nombre del archivo
+    const nombreBase = soloLoc ? infLoc : soloDepto ? `Departamento_${infDept}` : "General";
+    const fecha      = new Date().toLocaleDateString("es-AR");
+    // Para el mini-header en páginas 2+
+    const headerRight = soloLoc
+      ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:filtrado[0]?.Departamento||"").toUpperCase()}`
+      : soloDepto ? `DPTO. ${infDept.toUpperCase()}` : "CATAMARCA GENERAL";
 
     // ── Construir PDF ──
     const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
@@ -704,7 +719,7 @@ export default function Map() {
         doc.setTextColor(6,182,212); doc.setFontSize(9); doc.setFont("helvetica","bold");
         doc.text("WATERGIS",L,8);
         doc.setTextColor(120,140,170); doc.setFont("helvetica","normal");
-        doc.text(`${localidad.toUpperCase()} · ${departamento.toUpperCase()}`,R,8,{align:"right"});
+        doc.text(`${headerRight}`,R,8,{align:"right"});
         y=17;
       }
     };
@@ -727,13 +742,17 @@ export default function Map() {
     y=40;
 
     // BLOQUE TÍTULO
-    doc.setFillColor(15,25,50); doc.roundedRect(L,y,CW,22,3,3,"F");
-    doc.setFillColor(6,182,212); doc.roundedRect(L,y,4,22,2,2,"F");
+    doc.setFillColor(15,25,50); doc.roundedRect(L,y,CW,subtitulo?26:22,3,3,"F");
+    doc.setFillColor(6,182,212); doc.roundedRect(L,y,4,subtitulo?26:22,2,2,"F");
     doc.setTextColor(255,255,255); doc.setFontSize(15); doc.setFont("helvetica","bold");
-    doc.text("INFORME HIDROQUÍMICO LOCAL",L+8,y+9);
+    doc.text(titulo1,L+8,y+9);
     doc.setFontSize(11); doc.setFont("helvetica","normal"); doc.setTextColor(6,182,212);
-    doc.text(`${localidad.toUpperCase()}  ·  ${departamento.toUpperCase()}`,L+8,y+17);
-    y+=28;
+    doc.text(titulo2,L+8,y+17);
+    if(subtitulo){
+      doc.setFontSize(8); doc.setTextColor(148,163,184);
+      doc.text(subtitulo,L+8,y+23);
+    }
+    y+=(subtitulo?30:28);
 
     // HELPERS ──────────────────────────
     const seccion=(titulo:string)=>{
@@ -847,7 +866,11 @@ export default function Map() {
 
     // ══ CONCLUSIÓN ══
     seccion("CONCLUSIÓN TÉCNICA");
-    const conclusion=`La localidad de ${localidad} presenta una calidad de agua generalmente estable. Se identifican concentraciones elevadas de arsénico en determinados sectores, por lo que se recomienda continuar con el monitoreo periódico y mantener controles preventivos sobre las fuentes de abastecimiento.`;
+    const conclusion = soloLoc
+      ? `La localidad de ${infLoc} presenta una calidad de agua generalmente estable. Se identifican concentraciones elevadas de arsénico en determinados sectores, por lo que se recomienda continuar con el monitoreo periódico y mantener controles preventivos sobre las fuentes de abastecimiento.`
+      : soloDepto
+      ? `El departamento de ${infDept} presenta en general una calidad de agua estable. Se identifican variaciones entre localidades en cuanto a concentraciones de arsénico, por lo que se recomienda el monitoreo periódico y controles preventivos diferenciados por localidad.`
+      : `La Provincia de Catamarca presenta en general una calidad de agua variable según zona. Se recomienda el monitoreo continuo, especialmente en zonas con arsénico elevado, y mantener los controles establecidos por los organismos competentes.`;
     const lines=doc.splitTextToSize(conclusion,CW-6);
     const blockH=lines.length*5+8;
     checkPage(blockH);
@@ -859,7 +882,7 @@ export default function Map() {
     // ── FOOTER en la última página ──
     dibujarFooter();
 
-    const nombre=`Informe_Hidroquimico_${localidad.replace(/\s/g,"_")}_${fecha.replace(/\//g,"-")}.pdf`;
+    const nombre=`Informe_Hidroquimico_${nombreBase.replace(/\s/g,"_")}_${fecha.replace(/\//g,"-")}.pdf`;
     doc.save(nombre);
   };
 
