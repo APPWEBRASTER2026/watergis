@@ -1283,7 +1283,17 @@ export default function Map() {
                 <p>Puntos: {visiblePoints.length}</p>
               </div>
 
-              <button onClick={generarPDF}
+              <button
+                onClick={()=>{
+                  if(!(window as any).jspdf){
+                    const s=document.createElement("script");
+                    s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+                    s.onload=()=>generarPDF();
+                    document.head.appendChild(s);
+                  } else {
+                    generarPDF();
+                  }
+                }}
                 className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 mb-2 text-sm">
                 {t.generarPDF}
               </button>
@@ -1731,6 +1741,7 @@ export default function Map() {
             fecha:c.Fecha_de_monitoreo,
             As:parseAs(c.As_mg_l),
             TDS:parseFloat(String(c.TDS_mg_l||"0").replace(",",".")),
+            Ph:parseAs(c.Ph),
             Fluor:parseFloat(String(c.Fluor_mg_l||"0").replace(",",".")),
             NO3:parseFloat(String(c.NO3_mg_l||"0").replace(",",".")),
           }));
