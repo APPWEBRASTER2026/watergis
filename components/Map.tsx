@@ -625,6 +625,7 @@ export default function Map() {
   const generarPDF = () => {
     const { jsPDF } = (window as any).jspdf;
 
+    // FIX: usar points completos respetando solo los filtros seleccionados
     const filtrado = points.filter(p => {
       const dOk  = infDept==="TODOS"   || p.Departamento===infDept;
       const lOk  = infLoc==="TODAS"    || p.Localidad===infLoc;
@@ -634,28 +635,51 @@ export default function Map() {
         (infRiesgo==="BAJO"  && asV<0.01) ||
         (infRiesgo==="MEDIO" && asV>=0.01 && asV<=0.05) ||
         (infRiesgo==="ALTO"  && asV>0.05);
-      return dOk&&lOk&&fOk&&rOk;
+      const lat = parseFloat(p.Latitud?.toString().replace(",","."));
+      const lng = parseFloat(p.Longitud?.toString().replace(",","."));
+      return dOk&&lOk&&fOk&&rOk&&!isNaN(lat)&&!isNaN(lng);
     });
 
-    const avgAs    = filtrado.length>0?filtrado.reduce((a,p)=>a+parseAs(p.As_mg_l),0)/filtrado.length:0;
-    const avgFluor = filtrado.length>0?filtrado.reduce((a,p)=>a+parseAs(p.Fluor_mg_l),0)/filtrado.length:0;
-    const avgNO3   = filtrado.length>0?filtrado.reduce((a,p)=>a+parseAs(p.NO3_mg_l),0)/filtrado.length:0;
-    const avgTDS   = filtrado.length>0?filtrado.reduce((a,p)=>a+parseFloat(String(p.TDS_mg_l||"0").replace(",",".")),0)/filtrado.length:0;
-    const avgPh    = filtrado.length>0?filtrado.reduce((a,p)=>a+parseAs(p.Ph),0)/filtrado.length:0;
+    // Si no hay datos mostrar alerta pero no bloquear — usar todos los puntos válidos
+    const base = base.length > 0 ? filtrado : points.filter(p=>{
+      const lat=parseFloat(p.Latitud?.toString().replace(",","."));
+      const lng=parseFloat(p.Longitud?.toString().replace(",","."));
+      return !isNaN(lat)&&!isNaN(lng);
+    });
+
+    const avgAs    = base.length>0?base.reduce((a,p)=>a+parseAs(p.As_mg_l),0)/base.length:0;
+    const avgFluor = base.length>0?base.reduce((a,p)=>a+parseAs(p.Fluor_mg_l),0)/base.length:0;
+    const avgNO3   = base.length>0?base.reduce((a,p)=>a+parseAs(p.NO3_mg_l),0)/base.length:0;
+    const avgTDS   = base.length>0?base.reduce((a,p)=>a+parseFloat(String(p.TDS_mg_l||"0").replace(",",".")),0)/base.length:0;
+    const avgPh    = base.length>0?base.reduce((a,p)=>a+parseAs(p.Ph),0)/base.length:0;
+    const avgTemp  = base.length>0?base.reduce((a,p)=>a+parseAs(p.T_ºC),0)/base.length:0;
+
+    // ── Límite CAA de Flúor según temperatura promedio de la zona ──
+    // CAA Art. 982: F límite varía con temperatura anual media del agua
+    // < 10°C → 1.7 mg/L | 10-12°C → 1.5 mg/L | 12-14.6°C → 1.3 mg/L | 14.7-17.6°C → 1.2 mg/L | > 17.6°C → 1.0 mg/L
+    const getLimiteFluor = (temp: number): {limite: number; rango: string} => {
+      if (temp < 10)   return { limite: 1.7, rango: "T < 10°C" };
+      if (temp < 12)   return { limite: 1.5, rango: "10°C ≤ T < 12°C" };
+      if (temp < 14.7) return { limite: 1.3, rango: "12°C ≤ T < 14.7°C" };
+      if (temp < 17.7) return { limite: 1.2, rango: "14.7°C ≤ T < 17.7°C" };
+      return { limite: 1.0, rango: "T ≥ 17.7°C" };
+    };
+    const fluorInfo = getLimiteFluor(avgTemp);
+
     const estG     = avgAs>0.05?"ALERTA":avgAs>0.01?"PRECAUCIÓN":"NORMAL";
     const estColor: [number,number,number] = avgAs>0.05?[220,38,38]:avgAs>0.01?[245,158,11]:[34,197,94];
     const fPred    = (() => {
-      const sub=filtrado.filter(p=>p.Fuente==="SUBTERRANEA").length;
-      const sup=filtrado.filter(p=>p.Fuente==="SUPERFICIAL").length;
-      const mez=filtrado.filter(p=>p.Fuente==="MEZCLA").length;
+      const sub=base.filter(p=>p.Fuente==="SUBTERRANEA").length;
+      const sup=base.filter(p=>p.Fuente==="SUPERFICIAL").length;
+      const mez=base.filter(p=>p.Fuente==="MEZCLA").length;
       return sub>=sup&&sub>=mez?"Subterránea":sup>=mez?"Superficial":"Mezcla";
     })();
-    const bCnt=filtrado.filter(p=>parseAs(p.As_mg_l)<0.01).length;
-    const mCnt=filtrado.filter(p=>{const a=parseAs(p.As_mg_l);return a>=0.01&&a<=0.05;}).length;
-    const aCnt=filtrado.filter(p=>parseAs(p.As_mg_l)>0.05).length;
-    const pct=(n:number)=>filtrado.length>0?((n/filtrado.length)*100).toFixed(1):"0";
+    const bCnt=base.filter(p=>parseAs(p.As_mg_l)<0.01).length;
+    const mCnt=base.filter(p=>{const a=parseAs(p.As_mg_l);return a>=0.01&&a<=0.05;}).length;
+    const aCnt=base.filter(p=>parseAs(p.As_mg_l)>0.05).length;
+    const pct=(n:number)=>base.length>0?((n/base.length)*100).toFixed(1):"0";
     const byYear: Record<string,number[]>={};
-    filtrado.forEach(p=>{
+    base.forEach(p=>{
       const yr=p.Fecha_de_monitoreo?.split(/[-/]/)[0];
       if(!yr||yr.length!==4) return;
       if(!byYear[yr]) byYear[yr]=[];
@@ -678,7 +702,7 @@ export default function Map() {
     const fecha      = new Date().toLocaleDateString("es-AR");
     // Para el mini-header en páginas 2+
     const headerRight = soloLoc
-      ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:filtrado[0]?.Departamento||"").toUpperCase()}`
+      ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:base[0]?.Departamento||"").toUpperCase()}`
       : soloDepto ? `DPTO. ${infDept.toUpperCase()}` : "CATAMARCA GENERAL";
 
     // ── Construir PDF ──
@@ -783,7 +807,7 @@ export default function Map() {
 
     // ══ RESUMEN GENERAL ══
     seccion("RESUMEN GENERAL");
-    fila("Campañas realizadas", String(filtrado.length));
+    fila("Campañas realizadas", String(base.length));
     fila("Fuente predominante", fPred);
     fila("Estado general", estG, estColor);
     y+=4;
@@ -833,7 +857,7 @@ export default function Map() {
     y+=4;
 
     // ── Puntos críticos de As (riesgo alto) ──
-    const puntosAltosAs = filtrado
+    const puntosAltosAs = base
       .filter(p=>parseAs(p.As_mg_l)>0.05)
       .sort((a,b)=>parseAs(b.As_mg_l)-parseAs(a.As_mg_l))
       .slice(0,10);
@@ -889,9 +913,9 @@ export default function Map() {
       y+=9;
       doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
 
-      const subAs=filtrado.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUBTERRANEA").length;
-      const supAs=filtrado.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUPERFICIAL").length;
-      const mezAs=filtrado.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="MEZCLA").length;
+      const subAs=base.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUBTERRANEA").length;
+      const supAs=base.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUPERFICIAL").length;
+      const mezAs=base.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="MEZCLA").length;
       const fuenteAsRows=[
         ["Subterránea", subAs, aCnt>0?((subAs/aCnt)*100).toFixed(1):"0"],
         ["Superficial",  supAs, aCnt>0?((supAs/aCnt)*100).toFixed(1):"0"],
@@ -918,10 +942,10 @@ export default function Map() {
     }
 
     // ══ DISTRIBUCIÓN DE RIESGO — NO3 ══
-    const no3Bajo  = filtrado.filter(p=>parseAs(p.NO3_mg_l)<5).length;
-    const no3Medio = filtrado.filter(p=>{const v=parseAs(p.NO3_mg_l);return v>=5&&v<=10;}).length;
-    const no3Alto  = filtrado.filter(p=>parseAs(p.NO3_mg_l)>10).length;
-    const pctNo3   = (n:number)=>filtrado.length>0?((n/filtrado.length)*100).toFixed(1):"0";
+    const no3Bajo  = base.filter(p=>parseAs(p.NO3_mg_l)<5).length;
+    const no3Medio = base.filter(p=>{const v=parseAs(p.NO3_mg_l);return v>=5&&v<=10;}).length;
+    const no3Alto  = base.filter(p=>parseAs(p.NO3_mg_l)>10).length;
+    const pctNo3   = (n:number)=>base.length>0?((n/base.length)*100).toFixed(1):"0";
 
     checkPage(14);
     seccion("DISTRIBUCIÓN DE RIESGO — NITRATOS (NO3⁻)");
@@ -945,7 +969,7 @@ export default function Map() {
     y+=4;
 
     // ── Puntos críticos NO3 ──
-    const puntosAltosNo3 = filtrado
+    const puntosAltosNo3 = base
       .filter(p=>parseAs(p.NO3_mg_l)>10)
       .sort((a,b)=>parseAs(b.NO3_mg_l)-parseAs(a.NO3_mg_l))
       .slice(0,10);
@@ -996,9 +1020,9 @@ export default function Map() {
       y+=9;
       doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
 
-      const subNo3=filtrado.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUBTERRANEA").length;
-      const supNo3=filtrado.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUPERFICIAL").length;
-      const mezNo3=filtrado.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="MEZCLA").length;
+      const subNo3=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUBTERRANEA").length;
+      const supNo3=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUPERFICIAL").length;
+      const mezNo3=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="MEZCLA").length;
       const fRowsNo3=[
         ["Subterránea",subNo3,no3Alto>0?((subNo3/no3Alto)*100).toFixed(1):"0"],
         ["Superficial", supNo3,no3Alto>0?((supNo3/no3Alto)*100).toFixed(1):"0"],
@@ -1073,6 +1097,63 @@ export default function Map() {
     doc.setTextColor(220,235,255); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
     doc.text(lines,L+3,y+5);
     y+=blockH+4;
+
+    // ══ LEYENDA — CÓDIGO ALIMENTARIO ARGENTINO ══
+    checkPage(55);
+    y+=4;
+    // Título sección
+    doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
+    doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
+    doc.text("LÍMITES DE REFERENCIA — CÓDIGO ALIMENTARIO ARGENTINO (CAA)",L+6,y+5);
+    y+=9;
+    doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
+
+    // Tabla de límites CAA
+    const caaHeaders=["Parámetro","Límite CAA","Unidad","Promedio medido","Estado"];
+    const caaCols=[42,35,20,42,28] as number[];
+    doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
+    doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+    let hx=L;
+    caaHeaders.forEach((h,i)=>{ doc.text(h,hx+2,y+5); hx+=caaCols[i]; });
+    y+=8;
+
+    const fluorEstado = avgFluor > fluorInfo.limite ? "⛔ Supera" : avgFluor > fluorInfo.limite*0.8 ? "⚠️ Límite" : "✅ Normal";
+    const caaRows=[
+      ["Arsénico (As)",         "0.010",  "mg/L", avgAs.toFixed(3),   avgAs>0.01?"⛔ Supera":avgAs>0.008?"⚠️ Límite":"✅ Normal",   avgAs>0.01?[239,68,68] as [number,number,number]:avgAs>0.008?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
+      [`Flúor (${fluorInfo.rango})`, fluorInfo.limite.toFixed(1), "mg/L", avgFluor.toFixed(2), fluorEstado, avgFluor>fluorInfo.limite?[239,68,68] as [number,number,number]:avgFluor>fluorInfo.limite*0.8?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
+      ["Nitratos (NO3⁻)",       "45.0",   "mg/L", avgNO3.toFixed(1),  avgNO3>45?"⛔ Supera":avgNO3>35?"⚠️ Límite":"✅ Normal",    avgNO3>45?[239,68,68] as [number,number,number]:avgNO3>35?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
+      ["TDS (Sólidos disueltos)","1500",   "mg/L", avgTDS.toFixed(0),  avgTDS>1500?"⛔ Supera":avgTDS>1200?"⚠️ Límite":"✅ Normal", avgTDS>1500?[239,68,68] as [number,number,number]:avgTDS>1200?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
+    ];
+
+    caaRows.forEach((r,i)=>{
+      checkPage(8);
+      doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
+      doc.rect(L,y-1,CW,7,"F");
+      let rx=L;
+      (r.slice(0,5) as string[]).forEach((v,j)=>{
+        if(j===4){ doc.setTextColor(...(r[5] as [number,number,number])); doc.setFont("helvetica","bold"); }
+        else { doc.setTextColor(210,225,245); doc.setFont("helvetica","normal"); }
+        doc.setFontSize(8);
+        doc.text(String(v),rx+2,y+4,{maxWidth:caaCols[j]-3});
+        rx+=caaCols[j];
+      });
+      y+=8;
+    });
+    y+=3;
+
+    // Nota sobre flúor dinámico
+    doc.setFillColor(15,25,50); doc.roundedRect(L,y,CW,16,2,2,"F");
+    doc.setFillColor(6,182,212); doc.rect(L,y,2,16,"F");
+    doc.setTextColor(160,180,210); doc.setFontSize(7.5); doc.setFont("helvetica","italic");
+    doc.text(
+      `Nota: El límite de Flúor del CAA (Art. 982) varía según la temperatura media anual del agua. Temperatura promedio registrada: ${avgTemp>0?avgTemp.toFixed(1):"s/d"}°C — límite aplicado: ${fluorInfo.limite} mg/L (${fluorInfo.rango}).`,
+      L+5, y+6, {maxWidth:CW-8}
+    );
+    doc.text(
+      "Fuente: Código Alimentario Argentino — Artículos 982 y 983. OMS: Guías para la calidad del agua potable, 4ª edición.",
+      L+5, y+12, {maxWidth:CW-8}
+    );
+    y+=20;
 
     // ── FOOTER en la última página ──
     dibujarFooter();
