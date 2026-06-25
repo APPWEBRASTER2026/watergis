@@ -406,6 +406,9 @@ export default function Map() {
   const [selectedVariable, setSelectedVariable] = useState("As");
   const [selectedFuente, setSelectedFuente]     = useState("TODAS");
 
+  // Estado para el parámetro seleccionado en cada popup (clave: punto_localidad)
+  const [popupVar, setPopupVar] = useState<Record<string,string>>({});
+
   // Filtro sidebar
   const [selectedFiltDept, setSelectedFiltDept] = useState("TODOS");
 
@@ -729,17 +732,17 @@ export default function Map() {
 
     // HEADER principal
     doc.setFillColor(2,6,23);
-    doc.rect(0,0,W,34,"F");
-    doc.setFillColor(6,182,212); doc.rect(0,33,W,1.5,"F");
+    doc.rect(0,0,W,38,"F");
+    doc.setFillColor(6,182,212); doc.rect(0,37,W,1.5,"F");
     doc.setTextColor(6,182,212); doc.setFontSize(22); doc.setFont("helvetica","bold");
-    doc.text("WATERGIS",L,14);
+    doc.text("WATERGIS",L,13);
     doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(180,195,215);
-    doc.text("Plataforma Hidroquímica — Provincia de Catamarca",L,22);
+    doc.text("Plataforma Hidroquímica — Provincia de Catamarca",L,24);
     doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont("helvetica","bold");
-    doc.text("Nicolás Doria",R,14,{align:"right"});
+    doc.text("Nicolás Doria",R,13,{align:"right"});
     doc.setFont("helvetica","normal"); doc.setTextColor(180,195,215);
-    doc.text(`Fecha: ${fecha}`,R,22,{align:"right"});
-    y=40;
+    doc.text(`Fecha: ${fecha}`,R,24,{align:"right"});
+    y=44;
 
     // BLOQUE TÍTULO
     doc.setFillColor(15,25,50); doc.roundedRect(L,y,CW,subtitulo?26:22,3,3,"F");
@@ -807,8 +810,8 @@ export default function Map() {
     });
     y+=ch+6;
 
-    // ══ DISTRIBUCIÓN DE RIESGO ══
-    seccion("DISTRIBUCIÓN DE RIESGO — ARSÉNICO");
+    // ══ DISTRIBUCIÓN DE RIESGO — AS ══
+    seccion("DISTRIBUCIÓN DE RIESGO — ARSÉNICO (As)");
     const riesgos=[
       {label:"Bajo  (< 0.01 mg/L)",val:bCnt,pct:pct(bCnt),color:[34,197,94]  as [number,number,number]},
       {label:"Medio (0.01–0.05)",   val:mCnt,pct:pct(mCnt),color:[245,158,11] as [number,number,number]},
@@ -828,6 +831,198 @@ export default function Map() {
       y+=10;
     });
     y+=4;
+
+    // ── Puntos críticos de As (riesgo alto) ──
+    const puntosAltosAs = filtrado
+      .filter(p=>parseAs(p.As_mg_l)>0.05)
+      .sort((a,b)=>parseAs(b.As_mg_l)-parseAs(a.As_mg_l))
+      .slice(0,10);
+
+    if(puntosAltosAs.length>0){
+      checkPage(14);
+      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
+      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text("Puntos críticos — As alto (> 0.05 mg/L)",L+6,y+5);
+      y+=9;
+      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
+
+      // encabezado tabla
+      const colsAs=[52,42,32,22,24] as number[];
+      const headersAs=["Localidad","Departamento","Fuente","As (mg/L)","Estado"];
+      doc.setFillColor(14,116,144);
+      doc.rect(L,y,CW,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      let cx=L;
+      headersAs.forEach((h,i)=>{ doc.text(h,cx+2,y+5); cx+=colsAs[i]; });
+      y+=8;
+
+      puntosAltosAs.forEach((p,i)=>{
+        checkPage(8);
+        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
+        doc.rect(L,y-1,CW,7,"F");
+        doc.setTextColor(210,225,245); doc.setFontSize(8); doc.setFont("helvetica","normal");
+        const vals=[
+          p.Localidad||"-",
+          p.Departamento||"-",
+          p.Fuente||"-",
+          parseAs(p.As_mg_l).toFixed(3),
+          "⛔ ALTO"
+        ];
+        let vx=L;
+        vals.forEach((v,j)=>{
+          if(j===4){ doc.setTextColor(239,68,68); doc.setFont("helvetica","bold"); }
+          else { doc.setTextColor(210,225,245); doc.setFont("helvetica","normal"); }
+          doc.text(String(v),vx+2,y+4,{maxWidth:colsAs[j]-3});
+          vx+=colsAs[j];
+        });
+        y+=8;
+      });
+      y+=3;
+    }
+
+    // ── Riesgo As por tipo de fuente ──
+    if(aCnt>0){
+      checkPage(30);
+      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
+      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text("Riesgo alto de As por tipo de fuente",L+6,y+5);
+      y+=9;
+      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
+
+      const subAs=filtrado.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUBTERRANEA").length;
+      const supAs=filtrado.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUPERFICIAL").length;
+      const mezAs=filtrado.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="MEZCLA").length;
+      const fuenteAsRows=[
+        ["Subterránea", subAs, aCnt>0?((subAs/aCnt)*100).toFixed(1):"0"],
+        ["Superficial",  supAs, aCnt>0?((supAs/aCnt)*100).toFixed(1):"0"],
+        ["Mezcla",       mezAs, aCnt>0?((mezAs/aCnt)*100).toFixed(1):"0"],
+      ];
+      const fHeaders=["Tipo de fuente","Pts en riesgo alto","% del total en riesgo"];
+      const fCols=[55,50,60] as number[];
+      doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      let fx=L;
+      fHeaders.forEach((h,i)=>{ doc.text(h,fx+2,y+5); fx+=fCols[i]; });
+      y+=8;
+      fuenteAsRows.forEach((r,i)=>{
+        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
+        doc.rect(L,y-1,CW,7,"F");
+        doc.setTextColor(210,225,245); doc.setFontSize(8.5); doc.setFont("helvetica","normal");
+        let rx=L;
+        [String(r[0]),`${r[1]} puntos`,`${r[2]}%`].forEach((v,j)=>{
+          doc.text(v,rx+2,y+4); rx+=fCols[j];
+        });
+        y+=8;
+      });
+      y+=5;
+    }
+
+    // ══ DISTRIBUCIÓN DE RIESGO — NO3 ══
+    const no3Bajo  = filtrado.filter(p=>parseAs(p.NO3_mg_l)<5).length;
+    const no3Medio = filtrado.filter(p=>{const v=parseAs(p.NO3_mg_l);return v>=5&&v<=10;}).length;
+    const no3Alto  = filtrado.filter(p=>parseAs(p.NO3_mg_l)>10).length;
+    const pctNo3   = (n:number)=>filtrado.length>0?((n/filtrado.length)*100).toFixed(1):"0";
+
+    checkPage(14);
+    seccion("DISTRIBUCIÓN DE RIESGO — NITRATOS (NO3⁻)");
+    const riesgosNo3=[
+      {label:"Bajo  (< 5 mg/L)",   val:no3Bajo, pct:pctNo3(no3Bajo), color:[34,197,94]  as [number,number,number]},
+      {label:"Medio (5–10 mg/L)",  val:no3Medio,pct:pctNo3(no3Medio),color:[245,158,11] as [number,number,number]},
+      {label:"Alto  (> 10 mg/L)",  val:no3Alto, pct:pctNo3(no3Alto), color:[239,68,68]  as [number,number,number]},
+    ];
+    riesgosNo3.forEach(r=>{
+      checkPage(11);
+      doc.setFillColor(15,25,50); doc.rect(L,y-1,CW,9,"F");
+      doc.setTextColor(210,225,245); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
+      doc.text(r.label,L+3,y+5);
+      doc.setFillColor(30,45,75); doc.roundedRect(barX,y+1,barW,5,1,1,"F");
+      const bLen=Math.max(1.5,(parseFloat(r.pct)/100)*barW);
+      doc.setFillColor(...r.color); doc.roundedRect(barX,y+1,bLen,5,1,1,"F");
+      doc.setTextColor(...r.color); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text(`${r.val}  (${r.pct}%)`,R-2,y+5,{align:"right"});
+      y+=10;
+    });
+    y+=4;
+
+    // ── Puntos críticos NO3 ──
+    const puntosAltosNo3 = filtrado
+      .filter(p=>parseAs(p.NO3_mg_l)>10)
+      .sort((a,b)=>parseAs(b.NO3_mg_l)-parseAs(a.NO3_mg_l))
+      .slice(0,10);
+
+    if(puntosAltosNo3.length>0){
+      checkPage(14);
+      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
+      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text("Puntos críticos — NO3 alto (> 10 mg/L)",L+6,y+5);
+      y+=9;
+      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
+
+      const colsNo3=[52,42,32,25,24] as number[];
+      const headersNo3=["Localidad","Departamento","Fuente","NO3 (mg/L)","Estado"];
+      doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      let nx=L;
+      headersNo3.forEach((h,i)=>{ doc.text(h,nx+2,y+5); nx+=colsNo3[i]; });
+      y+=8;
+
+      puntosAltosNo3.forEach((p,i)=>{
+        checkPage(8);
+        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
+        doc.rect(L,y-1,CW,7,"F");
+        const vals=[
+          p.Localidad||"-", p.Departamento||"-", p.Fuente||"-",
+          parseAs(p.NO3_mg_l).toFixed(1), "⛔ ALTO"
+        ];
+        let vx=L;
+        vals.forEach((v,j)=>{
+          if(j===4){ doc.setTextColor(239,68,68); doc.setFont("helvetica","bold"); }
+          else { doc.setTextColor(210,225,245); doc.setFont("helvetica","normal"); }
+          doc.setFontSize(8);
+          doc.text(String(v),vx+2,y+4,{maxWidth:colsNo3[j]-3});
+          vx+=colsNo3[j];
+        });
+        y+=8;
+      });
+      y+=3;
+    }
+
+    // ── Riesgo NO3 por tipo de fuente ──
+    if(no3Alto>0){
+      checkPage(30);
+      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
+      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text("Riesgo alto de NO3 por tipo de fuente",L+6,y+5);
+      y+=9;
+      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
+
+      const subNo3=filtrado.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUBTERRANEA").length;
+      const supNo3=filtrado.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUPERFICIAL").length;
+      const mezNo3=filtrado.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="MEZCLA").length;
+      const fRowsNo3=[
+        ["Subterránea",subNo3,no3Alto>0?((subNo3/no3Alto)*100).toFixed(1):"0"],
+        ["Superficial", supNo3,no3Alto>0?((supNo3/no3Alto)*100).toFixed(1):"0"],
+        ["Mezcla",      mezNo3,no3Alto>0?((mezNo3/no3Alto)*100).toFixed(1):"0"],
+      ];
+      const fCols2=[55,50,60] as number[];
+      const fHead2=["Tipo de fuente","Pts en riesgo alto","% del total en riesgo"];
+      doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      let f2x=L;
+      fHead2.forEach((h,i)=>{ doc.text(h,f2x+2,y+5); f2x+=fCols2[i]; });
+      y+=8;
+      fRowsNo3.forEach((r,i)=>{
+        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
+        doc.rect(L,y-1,CW,7,"F");
+        doc.setTextColor(210,225,245); doc.setFontSize(8.5); doc.setFont("helvetica","normal");
+        let rx=L;
+        [String(r[0]),`${r[1]} puntos`,`${r[2]}%`].forEach((v,j)=>{
+          doc.text(v,rx+2,y+4); rx+=fCols2[j];
+        });
+        y+=8;
+      });
+      y+=5;
+    }
 
     // ══ EVOLUCIÓN HISTÓRICA ══
     if(histData.length>0){
@@ -1461,10 +1656,10 @@ export default function Map() {
 
           return (
             <Marker key={index} position={[lat,lng]} icon={esAutenticado ? getMarkerIcon(point) : greenIcon}>
-              <Popup maxWidth={280}>
-                <div style={{width:"240px"}}>
-                  <h2 style={{fontSize:"24px",fontWeight:800,marginBottom:"4px"}}>{point.Localidad}</h2>
-                  <div style={{opacity:0.8,marginBottom:"14px",fontSize:"13px",lineHeight:1.6}}>
+              <Popup maxWidth={300}>
+                <div style={{width:"260px"}}>
+                  <h2 style={{fontSize:"22px",fontWeight:800,marginBottom:"4px"}}>{point.Localidad}</h2>
+                  <div style={{opacity:0.8,marginBottom:"10px",fontSize:"13px",lineHeight:1.6}}>
                     <div><strong>{t.departamentos}:</strong> {point.Departamento}</div>
                     {esAutenticado && (
                       <>
@@ -1476,21 +1671,52 @@ export default function Map() {
                   </div>
                   {esAutenticado ? (
                     <>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"14px"}}>
-                        <PopupCard label="As"    value={point.As_mg_l}/>
-                        <PopupCard label="TDS"   value={point.TDS_mg_l}/>
-                        <PopupCard label="pH"    value={point.Ph}/>
-                        <PopupCard label="Fluor" value={point.Fluor_mg_l}/>
-                        <PopupCard label="NO3"   value={point.NO3_mg_l}/>
+                      {/* CARDS clicables */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginBottom:"10px"}}>
+                        {([
+                          {key:"As",   label:"As",    val:point.As_mg_l,    color:"#22d3ee"},
+                          {key:"TDS",  label:"TDS",   val:point.TDS_mg_l,   color:"#f59e0b"},
+                          {key:"Ph",   label:"pH",    val:point.Ph,         color:"#a78bfa"},
+                          {key:"Fluor",label:"Flúor", val:point.Fluor_mg_l, color:"#34d399"},
+                          {key:"NO3",  label:"NO3",   val:point.NO3_mg_l,   color:"#f87171"},
+                        ] as {key:string;label:string;val:string;color:string}[]).map(card=>(
+                          <div
+                            key={card.key}
+                            onClick={()=>setPopupVar(prev=>({...prev,[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]:card.key}))}
+                            style={{
+                              background: (popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
+                                ? "rgba(6,182,212,0.15)" : "#0f172a",
+                              border: `1px solid ${(popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
+                                ? card.color : "rgba(255,255,255,0.08)"}`,
+                              borderRadius:"10px", padding:"8px", cursor:"pointer",
+                              transition:"all 0.15s",
+                            }}
+                          >
+                            <div style={{fontSize:"10px",opacity:0.7,marginBottom:"2px"}}>{card.label}</div>
+                            <div style={{fontSize:"16px",fontWeight:700,color:card.color}}>{card.val}</div>
+                          </div>
+                        ))}
                       </div>
-                      <div style={{width:"100%",height:"240px"}}>
+                      {/* GRÁFICO del parámetro seleccionado */}
+                      <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"4px",textAlign:"center"}}>
+                        Evolución histórica — <strong style={{color:"#22d3ee"}}>
+                          {popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable}
+                        </strong>
+                      </div>
+                      <div style={{width:"100%",height:"200px"}}>
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
-                            <XAxis dataKey="fecha" fontSize={10}/>
-                            <YAxis fontSize={10}/>
+                            <XAxis dataKey="fecha" fontSize={9}/>
+                            <YAxis fontSize={9}/>
                             <Tooltip/>
-                            <Line type="monotone" dataKey={selectedVariable} stroke="#22d3ee" strokeWidth={3}/>
+                            <Line
+                              type="monotone"
+                              dataKey={popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable}
+                              stroke="#22d3ee"
+                              strokeWidth={2.5}
+                              dot={{r:3}}
+                            />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
