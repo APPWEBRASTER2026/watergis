@@ -1,7 +1,6 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import { jsPDF } from "jspdf";
 
 import {
   useEffect,
@@ -618,7 +617,26 @@ export default function Map() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError]     = useState("");
 
+  const [jsPDFReady, setJsPDFReady] = useState(false);
+
+  // Cargar jsPDF UMD desde CDN al montar — garantiza disponibilidad
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ((window as any).jspdf?.jsPDF) { setJsPDFReady(true); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    script.async = true;
+    script.onload = () => setJsPDFReady(true);
+    script.onerror = () => console.error("jsPDF CDN failed to load");
+    document.head.appendChild(script);
+  }, []);
+
   const generarPDF = () => {
+    if (!(window as any).jspdf?.jsPDF) {
+      setPdfError("PDF no disponible. Recargá la página e intentá nuevamente.");
+      return;
+    }
+    const { jsPDF } = (window as any).jspdf;
     setPdfLoading(true);
     setPdfError("");
     try {
@@ -705,7 +723,7 @@ export default function Map() {
       : soloDepto ? `DPTO. ${infDept.toUpperCase()}` : "CATAMARCA GENERAL";
 
     // ── Construir PDF ──
-    const doc = new jsPDF("p", "mm", "a4");
+    const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
     const W=210; const L=14; const R=W-14; const CW=W-28;
     const PAGE_H=297;
     const FOOTER_H=14;       // altura del footer
@@ -1295,9 +1313,9 @@ export default function Map() {
               )}
               <button
                 onClick={generarPDF}
-                disabled={pdfLoading}
+                disabled={pdfLoading || !jsPDFReady}
                 className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 mb-2 text-sm disabled:opacity-50 disabled:cursor-wait">
-                {pdfLoading ? "⏳ Generando PDF..." : t.generarPDF}
+                {pdfLoading ? "⏳ Generando PDF..." : !jsPDFReady ? "⏳ Cargando..." : t.generarPDF}
               </button>
               <button
                 className="w-full rounded-xl border border-cyan-500 py-3 font-bold text-cyan-300 hover:bg-cyan-500/10 text-sm">
