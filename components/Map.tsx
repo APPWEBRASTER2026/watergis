@@ -1053,16 +1053,11 @@ export default function Map() {
                 <p>Puntos: {visiblePoints.length}</p>
               </div>
 
-              {pdfError && (
-                <div className="mb-2 rounded-xl border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-400">
-                  {pdfError}
-                </div>
-              )}
               <button
                 onClick={generarPDF}
-                disabled={pdfLoading || !jsPDFReady}
+                disabled={pdfLoading}
                 className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 mb-2 text-sm disabled:opacity-50 disabled:cursor-wait">
-                {pdfLoading ? "⏳ Generando PDF..." : !jsPDFReady ? "⏳ Cargando..." : t.generarPDF}
+                {pdfLoading ? "⏳ Generando..." : t.generarPDF}
               </button>
               <button
                 className="w-full rounded-xl border border-cyan-500 py-3 font-bold text-cyan-300 hover:bg-cyan-500/10 text-sm">
