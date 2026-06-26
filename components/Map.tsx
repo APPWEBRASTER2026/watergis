@@ -611,37 +611,14 @@ export default function Map() {
   };
 
   // ======================================================
-  // GENERAR PDF
+  // GENERAR PDF — usando HTML + window.print() sin dependencias
   // ======================================================
 
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError, setPdfError]     = useState("");
-
-  const [jsPDFReady, setJsPDFReady] = useState(false);
-
-  // Cargar jsPDF UMD desde CDN al montar — garantiza disponibilidad
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if ((window as any).jspdf?.jsPDF) { setJsPDFReady(true); return; }
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    script.async = true;
-    script.onload = () => setJsPDFReady(true);
-    script.onerror = () => console.error("jsPDF CDN failed to load");
-    document.head.appendChild(script);
-  }, []);
 
   const generarPDF = () => {
-    if (!(window as any).jspdf?.jsPDF) {
-      setPdfError("PDF no disponible. Recargá la página e intentá nuevamente.");
-      return;
-    }
-    const { jsPDF } = (window as any).jspdf;
     setPdfLoading(true);
-    setPdfError("");
-    try {
 
-    // FIX: usar points completos respetando solo los filtros seleccionados
     const filtrado = points.filter(p => {
       const dOk  = infDept==="TODOS"   || p.Departamento===infDept;
       const lOk  = infLoc==="TODAS"    || p.Localidad===infLoc;
@@ -656,13 +633,11 @@ export default function Map() {
       return dOk&&lOk&&fOk&&rOk&&!isNaN(lat)&&!isNaN(lng);
     });
 
-    // Si no hay datos usar todos los puntos válidos — v2
-    const puntosValidos: Punto[] = points.filter(p=>{
+    const base: Punto[] = filtrado.length > 0 ? filtrado : points.filter(p=>{
       const lat=parseFloat(p.Latitud?.toString().replace(",","."));
       const lng=parseFloat(p.Longitud?.toString().replace(",","."));
       return !isNaN(lat)&&!isNaN(lng);
     });
-    const base: Punto[] = filtrado.length > 0 ? filtrado : puntosValidos;
 
     const avgAs    = base.length>0?base.reduce((a,p)=>a+parseAs(p.As_mg_l),0)/base.length:0;
     const avgFluor = base.length>0?base.reduce((a,p)=>a+parseAs(p.Fluor_mg_l),0)/base.length:0;
@@ -671,10 +646,7 @@ export default function Map() {
     const avgPh    = base.length>0?base.reduce((a,p)=>a+parseAs(p.Ph),0)/base.length:0;
     const avgTemp  = base.length>0?base.reduce((a,p)=>a+parseAs(p.T_ºC),0)/base.length:0;
 
-    // ── Límite CAA de Flúor según temperatura promedio de la zona ──
-    // CAA Art. 982: F límite varía con temperatura anual media del agua
-    // < 10°C → 1.7 mg/L | 10-12°C → 1.5 mg/L | 12-14.6°C → 1.3 mg/L | 14.7-17.6°C → 1.2 mg/L | > 17.6°C → 1.0 mg/L
-    const getLimiteFluor = (temp: number): {limite: number; rango: string} => {
+    const getLimiteFluor = (temp: number) => {
       if (temp < 10)   return { limite: 1.7, rango: "T < 10°C" };
       if (temp < 12)   return { limite: 1.5, rango: "10°C ≤ T < 12°C" };
       if (temp < 14.7) return { limite: 1.3, rango: "12°C ≤ T < 14.7°C" };
@@ -683,9 +655,9 @@ export default function Map() {
     };
     const fluorInfo = getLimiteFluor(avgTemp);
 
-    const estG     = avgAs>0.05?"ALERTA":avgAs>0.01?"PRECAUCIÓN":"NORMAL";
-    const estColor: [number,number,number] = avgAs>0.05?[220,38,38]:avgAs>0.01?[245,158,11]:[34,197,94];
-    const fPred    = (() => {
+    const estG  = avgAs>0.05?"⛔ ALERTA":avgAs>0.01?"⚠️ PRECAUCIÓN":"✅ NORMAL";
+    const estColor = avgAs>0.05?"#ef4444":avgAs>0.01?"#f59e0b":"#22c55e";
+    const fPred = (() => {
       const sub=base.filter(p=>p.Fuente==="SUBTERRANEA").length;
       const sup=base.filter(p=>p.Fuente==="SUPERFICIAL").length;
       const mez=base.filter(p=>p.Fuente==="MEZCLA").length;
@@ -695,6 +667,12 @@ export default function Map() {
     const mCnt=base.filter(p=>{const a=parseAs(p.As_mg_l);return a>=0.01&&a<=0.05;}).length;
     const aCnt=base.filter(p=>parseAs(p.As_mg_l)>0.05).length;
     const pct=(n:number)=>base.length>0?((n/base.length)*100).toFixed(1):"0";
+
+    const no3Bajo  = base.filter(p=>parseAs(p.NO3_mg_l)<5).length;
+    const no3Medio = base.filter(p=>{const v=parseAs(p.NO3_mg_l);return v>=5&&v<=10;}).length;
+    const no3Alto  = base.filter(p=>parseAs(p.NO3_mg_l)>10).length;
+    const pctNo3   = (n:number)=>base.length>0?((n/base.length)*100).toFixed(1):"0";
+
     const byYear: Record<string,number[]>={};
     base.forEach(p=>{
       const yr=p.Fecha_de_monitoreo?.split(/[-/]/)[0];
@@ -702,488 +680,257 @@ export default function Map() {
       if(!byYear[yr]) byYear[yr]=[];
       byYear[yr].push(parseAs(p.As_mg_l));
     });
-    const histData=Object.keys(byYear).sort().map(yr=>({yr,avg:(byYear[yr].reduce((a,v)=>a+v,0)/byYear[yr].length).toFixed(3)}));
+    const histData=Object.keys(byYear).sort().map(yr=>({
+      yr, avg:(byYear[yr].reduce((a,v)=>a+v,0)/byYear[yr].length).toFixed(3)
+    }));
 
-    // ── Título dinámico según filtros ──
-    const soloDepto  = infDept!=="TODOS" && infLoc==="TODAS";
-    const soloLoc    = infLoc!=="TODAS";
-    const titulo1    = "INFORME HIDROQUÍMICO";
-    const titulo2    = soloLoc
-      ? `${infLoc.toUpperCase()}  ·  ${(infDept!=="TODOS"?infDept:filtrado[0]?.Departamento||"").toUpperCase()}`
-      : soloDepto
-      ? `DEPARTAMENTO ${infDept.toUpperCase()}`
-      : `PROVINCIA DE CATAMARCA — TODOS LOS DEPARTAMENTOS`;
-    const subtitulo  = infFuente!=="TODAS" ? `Fuente: ${infFuente}` : "";
-    // Para el nombre del archivo
-    const nombreBase = soloLoc ? infLoc : soloDepto ? `Departamento_${infDept}` : "General";
-    const fecha      = new Date().toLocaleDateString("es-AR");
-    // Para el mini-header en páginas 2+
-    const headerRight = soloLoc
+    const soloDepto = infDept!=="TODOS" && infLoc==="TODAS";
+    const soloLoc   = infLoc!=="TODAS";
+    const titulo2   = soloLoc
       ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:base[0]?.Departamento||"").toUpperCase()}`
-      : soloDepto ? `DPTO. ${infDept.toUpperCase()}` : "CATAMARCA GENERAL";
+      : soloDepto ? `DEPARTAMENTO ${infDept.toUpperCase()}`
+      : `PROVINCIA DE CATAMARCA — TODOS LOS DEPARTAMENTOS`;
+    const fecha = new Date().toLocaleDateString("es-AR");
+    const nombreBase2 = soloLoc ? infLoc : soloDepto ? `Departamento_${infDept}` : "General";
 
-    // ── Construir PDF ──
-    const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-    const W=210; const L=14; const R=W-14; const CW=W-28;
-    const PAGE_H=297;
-    const FOOTER_H=14;       // altura del footer
-    const CONTENT_MAX=PAGE_H-FOOTER_H-4; // y máximo antes de footer
-    let y=0;
-    let pageNum=1;
+    const puntosAltosAs = base.filter(p=>parseAs(p.As_mg_l)>0.05)
+      .sort((a,b)=>parseAs(b.As_mg_l)-parseAs(a.As_mg_l)).slice(0,10);
+    const puntosAltosNo3 = base.filter(p=>parseAs(p.NO3_mg_l)>10)
+      .sort((a,b)=>parseAs(b.NO3_mg_l)-parseAs(a.NO3_mg_l)).slice(0,10);
 
-    // ── Dibujar fondo de página ──
-    const fondoPagina=()=>{
-      doc.setFillColor(10,15,30);
-      doc.rect(0,0,W,PAGE_H,"F");
-    };
-
-    // ── Dibujar footer en la página actual ──
-    const dibujarFooter=()=>{
-      doc.setFillColor(2,6,23);
-      doc.rect(0,PAGE_H-FOOTER_H,W,FOOTER_H,"F");
-      doc.setFillColor(6,182,212);
-      doc.rect(0,PAGE_H-FOOTER_H,W,0.8,"F");
-      doc.setTextColor(120,140,170); doc.setFontSize(7.5); doc.setFont("helvetica","normal");
-      doc.text("Sistema WATERGIS — Provincia de Catamarca — WGS 84 / EPSG:4326",W/2,PAGE_H-FOOTER_H+5,{align:"center"});
-      doc.setTextColor(160,180,210);
-      doc.text(`Generado: ${fecha}  ·  Usuario: Nicolás Doria  ·  Pág. ${pageNum}`,W/2,PAGE_H-FOOTER_H+10,{align:"center"});
-    };
-
-    // ── Salto de página automático ──
-    const checkPage=(needed:number=10)=>{
-      if(y+needed>CONTENT_MAX){
-        dibujarFooter();
-        doc.addPage();
-        pageNum++;
-        fondoPagina();
-        // mini header en páginas 2+
-        doc.setFillColor(2,6,23);
-        doc.rect(0,0,W,12,"F");
-        doc.setFillColor(6,182,212); doc.rect(0,11,W,0.8,"F");
-        doc.setTextColor(6,182,212); doc.setFontSize(9); doc.setFont("helvetica","bold");
-        doc.text("WATERGIS",L,8);
-        doc.setTextColor(120,140,170); doc.setFont("helvetica","normal");
-        doc.text(`${headerRight}`,R,8,{align:"right"});
-        y=17;
-      }
-    };
-
-    // ─── PÁGINA 1 ───
-    fondoPagina();
-
-    // HEADER principal
-    doc.setFillColor(2,6,23);
-    doc.rect(0,0,W,38,"F");
-    doc.setFillColor(6,182,212); doc.rect(0,37,W,1.5,"F");
-    doc.setTextColor(6,182,212); doc.setFontSize(22); doc.setFont("helvetica","bold");
-    doc.text("WATERGIS",L,13);
-    doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(180,195,215);
-    doc.text("Plataforma Hidroquímica — Provincia de Catamarca",L,24);
-    doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont("helvetica","bold");
-    doc.text("Nicolás Doria",R,13,{align:"right"});
-    doc.setFont("helvetica","normal"); doc.setTextColor(180,195,215);
-    doc.text(`Fecha: ${fecha}`,R,24,{align:"right"});
-    y=44;
-
-    // BLOQUE TÍTULO
-    doc.setFillColor(15,25,50); doc.roundedRect(L,y,CW,subtitulo?26:22,3,3,"F");
-    doc.setFillColor(6,182,212); doc.roundedRect(L,y,4,subtitulo?26:22,2,2,"F");
-    doc.setTextColor(255,255,255); doc.setFontSize(15); doc.setFont("helvetica","bold");
-    doc.text(titulo1,L+8,y+9);
-    doc.setFontSize(11); doc.setFont("helvetica","normal"); doc.setTextColor(6,182,212);
-    doc.text(titulo2,L+8,y+17);
-    if(subtitulo){
-      doc.setFontSize(8); doc.setTextColor(148,163,184);
-      doc.text(subtitulo,L+8,y+23);
-    }
-    y+=(subtitulo?30:28);
-
-    // HELPERS ──────────────────────────
-    const seccion=(titulo:string)=>{
-      checkPage(16);
-      y+=2;
-      doc.setFillColor(6,182,212); doc.rect(L,y,3,7,"F");
-      doc.setTextColor(6,182,212); doc.setFontSize(11); doc.setFont("helvetica","bold");
-      doc.text(titulo,L+6,y+6);
-      y+=10;
-      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4);
-      doc.line(L,y,R,y);
-      y+=5;
-    };
-
-    const fila=(label:string, valor:string, colorVal?:[number,number,number])=>{
-      checkPage(8);
-      doc.setFillColor(15,25,50); doc.rect(L,y-3.5,CW,7,"F");
-      doc.setTextColor(160,180,210); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
-      doc.text(label,L+3,y+1);
-      doc.setTextColor(...(colorVal??[255,255,255] as [number,number,number]));
-      doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text(valor,R-2,y+1,{align:"right"});
-      y+=8;
-    };
-
-    // ══ RESUMEN GENERAL ══
-    seccion("RESUMEN GENERAL");
-    fila("Campañas realizadas", String(base.length));
-    fila("Fuente predominante", fPred);
-    fila("Estado general", estG, estColor);
-    y+=4;
-
-    // ══ INDICADORES PRINCIPALES ══
-    seccion("INDICADORES PRINCIPALES");
-    checkPage(24);
-    const cards=[
-      {label:"Arsénico (As)", val:`${avgAs.toFixed(3)} mg/L`, color:[34,211,115]  as [number,number,number]},
-      {label:"Flúor",         val:`${avgFluor.toFixed(2)} mg/L`,color:[251,191,36] as [number,number,number]},
-      {label:"Nitratos (NO3)",val:`${avgNO3.toFixed(1)} mg/L`, color:[139,92,246]  as [number,number,number]},
-      {label:"TDS",           val:`${avgTDS.toFixed(0)} mg/L`, color:[248,177,51]  as [number,number,number]},
-      {label:"pH",            val:avgPh.toFixed(1),            color:[56,189,248]  as [number,number,number]},
-    ];
-    const cw=(CW-8)/5; const ch=18;
-    cards.forEach((c,i)=>{
-      const cx=L+i*(cw+2); const cy=y;
-      doc.setFillColor(15,25,50); doc.roundedRect(cx,cy,cw,ch,2,2,"F");
-      doc.setFillColor(...c.color); doc.rect(cx,cy,cw,1.5,"F");
-      doc.setTextColor(160,180,210); doc.setFontSize(7.5); doc.setFont("helvetica","normal");
-      doc.text(c.label,cx+cw/2,cy+7,{align:"center"});
-      doc.setTextColor(...c.color); doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text(c.val,cx+cw/2,cy+14,{align:"center"});
-    });
-    y+=ch+6;
-
-    // ══ DISTRIBUCIÓN DE RIESGO — AS ══
-    seccion("DISTRIBUCIÓN DE RIESGO — ARSÉNICO (As)");
-    const riesgos=[
-      {label:"Bajo  (< 0.01 mg/L)",val:bCnt,pct:pct(bCnt),color:[34,197,94]  as [number,number,number]},
-      {label:"Medio (0.01–0.05)",   val:mCnt,pct:pct(mCnt),color:[245,158,11] as [number,number,number]},
-      {label:"Alto  (> 0.05 mg/L)",val:aCnt,pct:pct(aCnt),color:[239,68,68]  as [number,number,number]},
-    ];
-    const barX=L+52; const barW=CW-52-30;
-    riesgos.forEach(r=>{
-      checkPage(11);
-      doc.setFillColor(15,25,50); doc.rect(L,y-1,CW,9,"F");
-      doc.setTextColor(210,225,245); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
-      doc.text(r.label,L+3,y+5);
-      doc.setFillColor(30,45,75); doc.roundedRect(barX,y+1,barW,5,1,1,"F");
-      const bLen=Math.max(1.5,(parseFloat(r.pct)/100)*barW);
-      doc.setFillColor(...r.color); doc.roundedRect(barX,y+1,bLen,5,1,1,"F");
-      doc.setTextColor(...r.color); doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text(`${r.val}  (${r.pct}%)`,R-2,y+5,{align:"right"});
-      y+=10;
-    });
-    y+=4;
-
-    // ── Puntos críticos de As (riesgo alto) ──
-    const puntosAltosAs = base
-      .filter(p=>parseAs(p.As_mg_l)>0.05)
-      .sort((a,b)=>parseAs(b.As_mg_l)-parseAs(a.As_mg_l))
-      .slice(0,10);
-
-    if(puntosAltosAs.length>0){
-      checkPage(14);
-      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
-      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text("Puntos críticos — As alto (> 0.05 mg/L)",L+6,y+5);
-      y+=9;
-      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
-
-      // encabezado tabla
-      const colsAs=[52,42,32,22,24] as number[];
-      const headersAs=["Localidad","Departamento","Fuente","As (mg/L)","Estado"];
-      doc.setFillColor(14,116,144);
-      doc.rect(L,y,CW,7,"F");
-      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
-      let cx=L;
-      headersAs.forEach((h,i)=>{ doc.text(h,cx+2,y+5); cx+=colsAs[i]; });
-      y+=8;
-
-      puntosAltosAs.forEach((p,i)=>{
-        checkPage(8);
-        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
-        doc.rect(L,y-1,CW,7,"F");
-        doc.setTextColor(210,225,245); doc.setFontSize(8); doc.setFont("helvetica","normal");
-        const vals=[
-          p.Localidad||"-",
-          p.Departamento||"-",
-          p.Fuente||"-",
-          parseAs(p.As_mg_l).toFixed(3),
-          "⛔ ALTO"
-        ];
-        let vx=L;
-        vals.forEach((v,j)=>{
-          if(j===4){ doc.setTextColor(239,68,68); doc.setFont("helvetica","bold"); }
-          else { doc.setTextColor(210,225,245); doc.setFont("helvetica","normal"); }
-          doc.text(String(v),vx+2,y+4,{maxWidth:colsAs[j]-3});
-          vx+=colsAs[j];
-        });
-        y+=8;
-      });
-      y+=3;
-    }
-
-    // ── Riesgo As por tipo de fuente ──
-    if(aCnt>0){
-      checkPage(30);
-      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
-      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text("Riesgo alto de As por tipo de fuente",L+6,y+5);
-      y+=9;
-      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
-
-      const subAs=base.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUBTERRANEA").length;
-      const supAs=base.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="SUPERFICIAL").length;
-      const mezAs=base.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente==="MEZCLA").length;
-      const fuenteAsRows=[
-        ["Subterránea", subAs, aCnt>0?((subAs/aCnt)*100).toFixed(1):"0"],
-        ["Superficial",  supAs, aCnt>0?((supAs/aCnt)*100).toFixed(1):"0"],
-        ["Mezcla",       mezAs, aCnt>0?((mezAs/aCnt)*100).toFixed(1):"0"],
-      ];
-      const fHeaders=["Tipo de fuente","Pts en riesgo alto","% del total en riesgo"];
-      const fCols=[55,50,60] as number[];
-      doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
-      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
-      let fx=L;
-      fHeaders.forEach((h,i)=>{ doc.text(h,fx+2,y+5); fx+=fCols[i]; });
-      y+=8;
-      fuenteAsRows.forEach((r,i)=>{
-        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
-        doc.rect(L,y-1,CW,7,"F");
-        doc.setTextColor(210,225,245); doc.setFontSize(8.5); doc.setFont("helvetica","normal");
-        let rx=L;
-        [String(r[0]),`${r[1]} puntos`,`${r[2]}%`].forEach((v,j)=>{
-          doc.text(v,rx+2,y+4); rx+=fCols[j];
-        });
-        y+=8;
-      });
-      y+=5;
-    }
-
-    // ══ DISTRIBUCIÓN DE RIESGO — NO3 ══
-    const no3Bajo  = base.filter(p=>parseAs(p.NO3_mg_l)<5).length;
-    const no3Medio = base.filter(p=>{const v=parseAs(p.NO3_mg_l);return v>=5&&v<=10;}).length;
-    const no3Alto  = base.filter(p=>parseAs(p.NO3_mg_l)>10).length;
-    const pctNo3   = (n:number)=>base.length>0?((n/base.length)*100).toFixed(1):"0";
-
-    checkPage(14);
-    seccion("DISTRIBUCIÓN DE RIESGO — NITRATOS (NO3⁻)");
-    const riesgosNo3=[
-      {label:"Bajo  (< 5 mg/L)",   val:no3Bajo, pct:pctNo3(no3Bajo), color:[34,197,94]  as [number,number,number]},
-      {label:"Medio (5–10 mg/L)",  val:no3Medio,pct:pctNo3(no3Medio),color:[245,158,11] as [number,number,number]},
-      {label:"Alto  (> 10 mg/L)",  val:no3Alto, pct:pctNo3(no3Alto), color:[239,68,68]  as [number,number,number]},
-    ];
-    riesgosNo3.forEach(r=>{
-      checkPage(11);
-      doc.setFillColor(15,25,50); doc.rect(L,y-1,CW,9,"F");
-      doc.setTextColor(210,225,245); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
-      doc.text(r.label,L+3,y+5);
-      doc.setFillColor(30,45,75); doc.roundedRect(barX,y+1,barW,5,1,1,"F");
-      const bLen=Math.max(1.5,(parseFloat(r.pct)/100)*barW);
-      doc.setFillColor(...r.color); doc.roundedRect(barX,y+1,bLen,5,1,1,"F");
-      doc.setTextColor(...r.color); doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text(`${r.val}  (${r.pct}%)`,R-2,y+5,{align:"right"});
-      y+=10;
-    });
-    y+=4;
-
-    // ── Puntos críticos NO3 ──
-    const puntosAltosNo3 = base
-      .filter(p=>parseAs(p.NO3_mg_l)>10)
-      .sort((a,b)=>parseAs(b.NO3_mg_l)-parseAs(a.NO3_mg_l))
-      .slice(0,10);
-
-    if(puntosAltosNo3.length>0){
-      checkPage(14);
-      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
-      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text("Puntos críticos — NO3 alto (> 10 mg/L)",L+6,y+5);
-      y+=9;
-      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
-
-      const colsNo3=[52,42,32,25,24] as number[];
-      const headersNo3=["Localidad","Departamento","Fuente","NO3 (mg/L)","Estado"];
-      doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
-      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
-      let nx=L;
-      headersNo3.forEach((h,i)=>{ doc.text(h,nx+2,y+5); nx+=colsNo3[i]; });
-      y+=8;
-
-      puntosAltosNo3.forEach((p,i)=>{
-        checkPage(8);
-        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
-        doc.rect(L,y-1,CW,7,"F");
-        const vals=[
-          p.Localidad||"-", p.Departamento||"-", p.Fuente||"-",
-          parseAs(p.NO3_mg_l).toFixed(1), "⛔ ALTO"
-        ];
-        let vx=L;
-        vals.forEach((v,j)=>{
-          if(j===4){ doc.setTextColor(239,68,68); doc.setFont("helvetica","bold"); }
-          else { doc.setTextColor(210,225,245); doc.setFont("helvetica","normal"); }
-          doc.setFontSize(8);
-          doc.text(String(v),vx+2,y+4,{maxWidth:colsNo3[j]-3});
-          vx+=colsNo3[j];
-        });
-        y+=8;
-      });
-      y+=3;
-    }
-
-    // ── Riesgo NO3 por tipo de fuente ──
-    if(no3Alto>0){
-      checkPage(30);
-      doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
-      doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text("Riesgo alto de NO3 por tipo de fuente",L+6,y+5);
-      y+=9;
-      doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
-
-      const subNo3=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUBTERRANEA").length;
-      const supNo3=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="SUPERFICIAL").length;
-      const mezNo3=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente==="MEZCLA").length;
-      const fRowsNo3=[
-        ["Subterránea",subNo3,no3Alto>0?((subNo3/no3Alto)*100).toFixed(1):"0"],
-        ["Superficial", supNo3,no3Alto>0?((supNo3/no3Alto)*100).toFixed(1):"0"],
-        ["Mezcla",      mezNo3,no3Alto>0?((mezNo3/no3Alto)*100).toFixed(1):"0"],
-      ];
-      const fCols2=[55,50,60] as number[];
-      const fHead2=["Tipo de fuente","Pts en riesgo alto","% del total en riesgo"];
-      doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
-      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
-      let f2x=L;
-      fHead2.forEach((h,i)=>{ doc.text(h,f2x+2,y+5); f2x+=fCols2[i]; });
-      y+=8;
-      fRowsNo3.forEach((r,i)=>{
-        doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
-        doc.rect(L,y-1,CW,7,"F");
-        doc.setTextColor(210,225,245); doc.setFontSize(8.5); doc.setFont("helvetica","normal");
-        let rx=L;
-        [String(r[0]),`${r[1]} puntos`,`${r[2]}%`].forEach((v,j)=>{
-          doc.text(v,rx+2,y+4); rx+=fCols2[j];
-        });
-        y+=8;
-      });
-      y+=5;
-    }
-
-    // ══ EVOLUCIÓN HISTÓRICA ══
-    if(histData.length>0){
-      seccion("EVOLUCIÓN HISTÓRICA DEL ARSÉNICO");
-      histData.forEach((h,i)=>{
-        checkPage(8);
-        if(i%2===0){ doc.setFillColor(15,25,50); doc.rect(L,y-3.5,CW,7,"F"); }
-        doc.setTextColor(160,180,210); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
-        doc.text(h.yr,L+3,y+1);
-        doc.setTextColor(56,189,248); doc.setFont("helvetica","bold");
-        doc.text(`${h.avg} mg/L`,R-2,y+1,{align:"right"});
-        y+=7.5;
-      });
-      checkPage(8);
-      doc.setTextColor(120,140,170); doc.setFontSize(8.5); doc.setFont("helvetica","italic");
-      doc.text("Tendencia observada: Incremento moderado de concentración.",L+3,y+2);
-      y+=8;
-    }
-
-    // ══ OBSERVACIONES ══
-    seccion("OBSERVACIONES AUTOMÁTICAS");
-    const obs=[
-      "Se observan valores de arsénico superiores al valor guía en algunos sectores.",
-      "Los nitratos permanecen dentro de rangos aceptables.",
-      "La calidad fisicoquímica presenta estabilidad respecto de campañas anteriores.",
-      "No se detectan cambios bruscos en los parámetros monitoreados.",
-    ];
-    obs.forEach((o,i)=>{
-      checkPage(9);
-      if(i%2===0){ doc.setFillColor(15,25,50); doc.rect(L,y-2,CW,8,"F"); }
-      doc.setTextColor(210,225,245); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
-      doc.text(`•  ${o}`,L+3,y+3,{maxWidth:CW-6});
-      y+=8;
-    });
-    y+=4;
-
-    // ══ CONCLUSIÓN ══
-    seccion("CONCLUSIÓN TÉCNICA");
     const conclusion = soloLoc
       ? `La localidad de ${infLoc} presenta una calidad de agua generalmente estable. Se identifican concentraciones elevadas de arsénico en determinados sectores, por lo que se recomienda continuar con el monitoreo periódico y mantener controles preventivos sobre las fuentes de abastecimiento.`
       : soloDepto
       ? `El departamento de ${infDept} presenta en general una calidad de agua estable. Se identifican variaciones entre localidades en cuanto a concentraciones de arsénico, por lo que se recomienda el monitoreo periódico y controles preventivos diferenciados por localidad.`
       : `La Provincia de Catamarca presenta en general una calidad de agua variable según zona. Se recomienda el monitoreo continuo, especialmente en zonas con arsénico elevado, y mantener los controles establecidos por los organismos competentes.`;
-    const lines=doc.splitTextToSize(conclusion,CW-6);
-    const blockH=lines.length*5+8;
-    checkPage(blockH);
-    doc.setFillColor(15,25,50); doc.roundedRect(L,y-1,CW,blockH,2,2,"F");
-    doc.setTextColor(220,235,255); doc.setFontSize(9.5); doc.setFont("helvetica","normal");
-    doc.text(lines,L+3,y+5);
-    y+=blockH+4;
 
-    // ══ LEYENDA — CÓDIGO ALIMENTARIO ARGENTINO ══
-    checkPage(55);
-    y+=4;
-    // Título sección
-    doc.setFillColor(6,182,212); doc.rect(L,y,3,6,"F");
-    doc.setTextColor(6,182,212); doc.setFontSize(10); doc.setFont("helvetica","bold");
-    doc.text("LÍMITES DE REFERENCIA — CÓDIGO ALIMENTARIO ARGENTINO (CAA)",L+6,y+5);
-    y+=9;
-    doc.setDrawColor(30,50,80); doc.setLineWidth(0.4); doc.line(L,y,R,y); y+=4;
+    const tr = (cells: string[], header=false) =>
+      `<tr>${cells.map(c=>`<${header?"th":"td"}>${c}</${header?"th":"td"}>`).join("")}</tr>`;
 
-    // Tabla de límites CAA
-    const caaHeaders=["Parámetro","Límite CAA","Unidad","Promedio medido","Estado"];
-    const caaCols=[42,35,20,42,28] as number[];
-    doc.setFillColor(14,116,144); doc.rect(L,y,CW,7,"F");
-    doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
-    let hx=L;
-    caaHeaders.forEach((h,i)=>{ doc.text(h,hx+2,y+5); hx+=caaCols[i]; });
-    y+=8;
+    const barraHTML = (pctStr:string, color:string) =>
+      `<div style="background:#1e293b;border-radius:4px;height:10px;width:100%">
+        <div style="background:${color};border-radius:4px;height:10px;width:${pctStr}%"></div>
+      </div>`;
 
-    const fluorEstado = avgFluor > fluorInfo.limite ? "⛔ Supera" : avgFluor > fluorInfo.limite*0.8 ? "⚠️ Límite" : "✅ Normal";
-    const caaRows=[
-      ["Arsénico (As)",         "0.010",  "mg/L", avgAs.toFixed(3),   avgAs>0.01?"⛔ Supera":avgAs>0.008?"⚠️ Límite":"✅ Normal",   avgAs>0.01?[239,68,68] as [number,number,number]:avgAs>0.008?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
-      [`Flúor (${fluorInfo.rango})`, fluorInfo.limite.toFixed(1), "mg/L", avgFluor.toFixed(2), fluorEstado, avgFluor>fluorInfo.limite?[239,68,68] as [number,number,number]:avgFluor>fluorInfo.limite*0.8?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
-      ["Nitratos (NO3⁻)",       "45.0",   "mg/L", avgNO3.toFixed(1),  avgNO3>45?"⛔ Supera":avgNO3>35?"⚠️ Límite":"✅ Normal",    avgNO3>45?[239,68,68] as [number,number,number]:avgNO3>35?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
-      ["TDS (Sólidos disueltos)","1500",   "mg/L", avgTDS.toFixed(0),  avgTDS>1500?"⛔ Supera":avgTDS>1200?"⚠️ Límite":"✅ Normal", avgTDS>1500?[239,68,68] as [number,number,number]:avgTDS>1200?[245,158,11] as [number,number,number]:[34,197,94] as [number,number,number]],
-    ];
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Informe WATERGIS — ${nombreBase2}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; background: white; }
+  .page { padding: 18mm 16mm; }
+  h1 { font-size: 22px; color: #0e7490; margin-bottom: 2px; }
+  h2 { font-size: 13px; color: #0e7490; border-left: 4px solid #06b6d4; padding-left: 8px; margin: 16px 0 8px; }
+  h3 { font-size: 11px; color: #475569; margin: 12px 0 6px; }
+  .subtitle { font-size: 12px; color: #334155; margin-bottom: 2px; }
+  .meta { font-size: 10px; color: #64748b; margin-bottom: 14px; }
+  .header-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
+  th { background: #0e7490; color: white; padding: 6px 8px; text-align: left; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .estado-alerta { color: #dc2626; font-weight: bold; }
+  .estado-precaucion { color: #d97706; font-weight: bold; }
+  .estado-normal { color: #16a34a; font-weight: bold; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .bar-label { width: 160px; flex-shrink: 0; font-size: 10px; }
+  .bar-wrap { flex: 1; background: #e2e8f0; border-radius: 4px; height: 12px; }
+  .bar-fill { height: 12px; border-radius: 4px; }
+  .bar-val { width: 80px; text-align: right; font-size: 10px; font-weight: bold; }
+  .caa-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-top: 16px; }
+  .caa-box h2 { color: #15803d; border-left-color: #22c55e; }
+  .nota { font-size: 9px; color: #64748b; font-style: italic; margin-top: 8px; line-height: 1.5; }
+  .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; text-align: center; }
+  .supera { color: #dc2626; font-weight: bold; }
+  .limite { color: #d97706; font-weight: bold; }
+  .ok { color: #16a34a; font-weight: bold; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @page { margin: 15mm; size: A4; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
 
-    caaRows.forEach((r,i)=>{
-      checkPage(8);
-      doc.setFillColor(i%2===0?[15,25,50] as any:[30,41,59] as any);
-      doc.rect(L,y-1,CW,7,"F");
-      let rx=L;
-      (r.slice(0,5) as string[]).forEach((v,j)=>{
-        if(j===4){ doc.setTextColor(...(r[5] as [number,number,number])); doc.setFont("helvetica","bold"); }
-        else { doc.setTextColor(210,225,245); doc.setFont("helvetica","normal"); }
-        doc.setFontSize(8);
-        doc.text(String(v),rx+2,y+4,{maxWidth:caaCols[j]-3});
-        rx+=caaCols[j];
-      });
-      y+=8;
-    });
-    y+=3;
+  <!-- ENCABEZADO -->
+  <div class="header-box">
+    <div class="header-top">
+      <div>
+        <h1>💧 WATERGIS</h1>
+        <div class="subtitle">INFORME HIDROQUÍMICO LOCAL</div>
+        <div class="subtitle"><strong>${titulo2}</strong></div>
+      </div>
+      <div style="text-align:right;font-size:10px;color:#64748b">
+        <div>Usuario: Nicolás Doria</div>
+        <div>Fecha: ${fecha}</div>
+        <div>Puntos analizados: ${base.length}</div>
+      </div>
+    </div>
+  </div>
 
-    // Nota sobre flúor dinámico
-    doc.setFillColor(15,25,50); doc.roundedRect(L,y,CW,16,2,2,"F");
-    doc.setFillColor(6,182,212); doc.rect(L,y,2,16,"F");
-    doc.setTextColor(160,180,210); doc.setFontSize(7.5); doc.setFont("helvetica","italic");
-    doc.text(
-      `Nota: El límite de Flúor del CAA (Art. 982) varía según la temperatura media anual del agua. Temperatura promedio registrada: ${avgTemp>0?avgTemp.toFixed(1):"s/d"}°C — límite aplicado: ${fluorInfo.limite} mg/L (${fluorInfo.rango}).`,
-      L+5, y+6, {maxWidth:CW-8}
-    );
-    doc.text(
-      "Fuente: Código Alimentario Argentino — Artículos 982 y 983. OMS: Guías para la calidad del agua potable, 4ª edición.",
-      L+5, y+12, {maxWidth:CW-8}
-    );
-    y+=20;
+  <!-- RESUMEN -->
+  <table>
+    <tbody>
+      ${tr(["Campañas realizadas", String(base.length)])}
+      ${tr(["Fuente predominante", fPred])}
+      ${tr(["Estado general", `<span class="estado-${avgAs>0.05?"alerta":avgAs>0.01?"precaucion":"normal"}">${estG}</span>`])}
+    </tbody>
+  </table>
 
-    // ── FOOTER en la última página ──
-    dibujarFooter();
+  <!-- INDICADORES -->
+  <h2>INDICADORES PRINCIPALES</h2>
+  <table>
+    <thead>${tr(["Parámetro","Promedio","Límite OMS","Estado"],true)}</thead>
+    <tbody>
+      ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "0.010 mg/L", `<span class="${avgAs>0.01?"supera":avgAs>0.008?"limite":"ok"}">${avgAs>0.01?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Flúor", avgFluor.toFixed(2)+" mg/L", fluorInfo.limite+" mg/L", `<span class="${avgFluor>fluorInfo.limite?"supera":avgFluor>fluorInfo.limite*0.8?"limite":"ok"}">${avgFluor>fluorInfo.limite?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Nitratos (NO3)", avgNO3.toFixed(1)+" mg/L", "10 mg/L (OMS)", `<span class="${avgNO3>10?"supera":avgNO3>8?"limite":"ok"}">${avgNO3>10?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "1000 mg/L", `<span class="${avgTDS>1000?"supera":avgTDS>800?"limite":"ok"}">${avgTDS>1000?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["pH", avgPh.toFixed(1), "6.5 – 8.5", `<span class="${avgPh<6.5||avgPh>8.5?"supera":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
+    </tbody>
+  </table>
 
-    const nombre=`Informe_Hidroquimico_${nombreBase.replace(/\s/g,"_")}_${fecha.replace(/\//g,"-")}.pdf`;
-    doc.save(nombre);
-    } catch(err:any) {
-      setPdfError("Error al generar PDF: " + (err?.message||"intente nuevamente"));
-      console.error("PDF error:", err);
-    } finally {
-      setPdfLoading(false);
+  <!-- RIESGO AS -->
+  <h2>DISTRIBUCIÓN DE RIESGO — ARSÉNICO (As)</h2>
+  <div class="bar-row">
+    <div class="bar-label">Bajo (&lt; 0.01 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(bCnt)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${bCnt} (${pct(bCnt)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Medio (0.01–0.05 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(mCnt)}%"></div></div>
+    <div class="bar-val" style="color:#f59e0b">${mCnt} (${pct(mCnt)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Alto (&gt; 0.05 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(aCnt)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${aCnt} (${pct(aCnt)}%)</div>
+  </div>
+
+  ${puntosAltosAs.length>0?`
+  <h3>Puntos críticos — As alto (&gt; 0.05 mg/L)</h3>
+  <table>
+    <thead>${tr(["Localidad","Departamento","Fuente","As (mg/L)","Estado"],true)}</thead>
+    <tbody>
+      ${puntosAltosAs.map(p=>tr([
+        p.Localidad||"-", p.Departamento||"-", p.Fuente||"-",
+        parseAs(p.As_mg_l).toFixed(3),
+        '<span class="supera">⛔ ALTO</span>'
+      ])).join("")}
+    </tbody>
+  </table>
+  <h3>Riesgo alto de As por tipo de fuente</h3>
+  <table>
+    <thead>${tr(["Tipo de fuente","Puntos en riesgo alto","% del total en riesgo"],true)}</thead>
+    <tbody>
+      ${[["Subterránea","SUBTERRANEA"],["Superficial","SUPERFICIAL"],["Mezcla","MEZCLA"]].map(([label,key])=>{
+        const n=base.filter(p=>parseAs(p.As_mg_l)>0.05&&p.Fuente===key).length;
+        return tr([label, `${n} puntos`, aCnt>0?((n/aCnt)*100).toFixed(1)+"%":"0%"]);
+      }).join("")}
+    </tbody>
+  </table>`:""}
+
+  <!-- RIESGO NO3 -->
+  <h2>DISTRIBUCIÓN DE RIESGO — NITRATOS (NO3⁻)</h2>
+  <div class="bar-row">
+    <div class="bar-label">Bajo (&lt; 5 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pctNo3(no3Bajo)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${no3Bajo} (${pctNo3(no3Bajo)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Medio (5–10 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pctNo3(no3Medio)}%"></div></div>
+    <div class="bar-val" style="color:#f59e0b">${no3Medio} (${pctNo3(no3Medio)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Alto (&gt; 10 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pctNo3(no3Alto)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${no3Alto} (${pctNo3(no3Alto)}%)</div>
+  </div>
+
+  ${puntosAltosNo3.length>0?`
+  <h3>Puntos críticos — NO3 alto (&gt; 10 mg/L)</h3>
+  <table>
+    <thead>${tr(["Localidad","Departamento","Fuente","NO3 (mg/L)","Estado"],true)}</thead>
+    <tbody>
+      ${puntosAltosNo3.map(p=>tr([
+        p.Localidad||"-", p.Departamento||"-", p.Fuente||"-",
+        parseAs(p.NO3_mg_l).toFixed(1),
+        '<span class="supera">⛔ ALTO</span>'
+      ])).join("")}
+    </tbody>
+  </table>
+  <h3>Riesgo alto de NO3 por tipo de fuente</h3>
+  <table>
+    <thead>${tr(["Tipo de fuente","Puntos en riesgo alto","% del total en riesgo"],true)}</thead>
+    <tbody>
+      ${[["Subterránea","SUBTERRANEA"],["Superficial","SUPERFICIAL"],["Mezcla","MEZCLA"]].map(([label,key])=>{
+        const n=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente===key).length;
+        return tr([label, `${n} puntos`, no3Alto>0?((n/no3Alto)*100).toFixed(1)+"%":"0%"]);
+      }).join("")}
+    </tbody>
+  </table>`:""}
+
+  ${histData.length>0?`
+  <h2>EVOLUCIÓN HISTÓRICA DEL ARSÉNICO</h2>
+  <table>
+    <thead>${tr(["Año","As promedio (mg/L)"],true)}</thead>
+    <tbody>${histData.map(h=>tr([h.yr, h.avg+" mg/L"])).join("")}</tbody>
+  </table>`:""}
+
+  <!-- OBSERVACIONES -->
+  <h2>OBSERVACIONES AUTOMÁTICAS</h2>
+  <ul style="padding-left:16px;line-height:1.8">
+    <li>Se observan valores de arsénico superiores al valor guía en algunos sectores.</li>
+    <li>Los nitratos permanecen dentro de rangos aceptables.</li>
+    <li>La calidad fisicoquímica presenta estabilidad respecto de campañas anteriores.</li>
+    <li>No se detectan cambios bruscos en los parámetros monitoreados.</li>
+  </ul>
+
+  <!-- CONCLUSIÓN -->
+  <h2>CONCLUSIÓN TÉCNICA</h2>
+  <p style="line-height:1.7;color:#334155">${conclusion}</p>
+
+  <!-- CAA -->
+  <div class="caa-box">
+    <h2>LÍMITES DE REFERENCIA — CÓDIGO ALIMENTARIO ARGENTINO (CAA)</h2>
+    <table>
+      <thead>${tr(["Parámetro","Límite CAA","Unidad","Promedio medido","Estado"],true)}</thead>
+      <tbody>
+        ${tr(["Arsénico (As)", "0.010", "mg/L", avgAs.toFixed(3), `<span class="${avgAs>0.01?"supera":"ok"}">${avgAs>0.01?"⛔ Supera":"✅ Normal"}</span>`])}
+        ${tr([`Flúor (${fluorInfo.rango})`, String(fluorInfo.limite), "mg/L", avgFluor.toFixed(2), `<span class="${avgFluor>fluorInfo.limite?"supera":"ok"}">${avgFluor>fluorInfo.limite?"⛔ Supera":"✅ Normal"}</span>`])}
+        ${tr(["Nitratos (NO3⁻)", "45.0", "mg/L", avgNO3.toFixed(1), `<span class="${avgNO3>45?"supera":"ok"}">${avgNO3>45?"⛔ Supera":"✅ Normal"}</span>`])}
+        ${tr(["TDS", "1500", "mg/L", avgTDS.toFixed(0), `<span class="${avgTDS>1500?"supera":"ok"}">${avgTDS>1500?"⛔ Supera":"✅ Normal"}</span>`])}
+      </tbody>
+    </table>
+    <p class="nota">
+      Nota: El límite de Flúor del CAA (Art. 982) varía según la temperatura media anual del agua.
+      Temperatura promedio registrada: ${avgTemp>0?avgTemp.toFixed(1):"s/d"}°C — límite aplicado: ${fluorInfo.limite} mg/L (${fluorInfo.rango}).<br>
+      Fuente: Código Alimentario Argentino — Arts. 982 y 983. OMS: Guías para la calidad del agua potable, 4ª ed.
+    </p>
+  </div>
+
+  <div class="footer">
+    Sistema WATERGIS — Plataforma Hidroquímica · Provincia de Catamarca · WGS 84 / EPSG:4326<br>
+    Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
+  </div>
+</div>
+<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
+</body></html>`;
+
+    const ventana = window.open("","_blank","width=900,height=700");
+    if(ventana){
+      ventana.document.write(html);
+      ventana.document.close();
     }
+    setPdfLoading(false);
   };
+
 
   // ======================================================
   // RENDER
