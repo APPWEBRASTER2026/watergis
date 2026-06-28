@@ -82,7 +82,7 @@ type Idioma    = "es" | "en" | "de" | "pt";
 type Tipografia = "inter" | "mono" | "serif";
 
 // tipo de panel del menú hamburguesa
-type PanelMenu = "informes" | "capas" | "acerca" | null;
+type PanelMenu = "informes" | "capas" | "acerca" | "temperaturas" | null;
 
 // ======================================================
 // TRADUCCIONES
@@ -262,6 +262,36 @@ const cuencaColors = [
   "#ff006e","#3a86ff","#8338ec","#fb5607","#ffbe0b",
   "#06d6a0","#118ab2","#ef476f","#8ac926","#1982c4","#6a4c93","#f72585",
 ];
+
+// ======================================================
+// TEMPERATURA MEDIA ANUAL POR DEPARTAMENTO — CAA Art. 982
+// ======================================================
+
+const TEMP_DPTO: Record<string, number> = {
+  "CAPITAL":                    22,
+  "VALLE VIEJO":                22,
+  "FRAY MAMERTO ESQUIU":        20,
+  "FRAY MAMERTO ESQUIÚ":        20,
+  "CAPAYON":                    20,
+  "CAPAYÁN":                    20,
+  "LA PAZ":                     21,
+  "EL ALTO":                    18,
+  "ANCASTI":                    19,
+  "AMBATO":                     17,
+  "POMAN":                      20,
+  "POMÁN":                      20,
+  "TINOGASTA":                  17,
+  "SANTA MARIA":                16,
+  "SANTA MARÍA":                16,
+  "BELEN":                      17,
+  "BELÉN":                      17,
+  "ANDALGALA":                  18,
+  "ANDALGALÁ":                  18,
+  "SANTA ROSA":                 20,
+  "ANTOFAGASTA DE LA SIERRA":   10,
+  "BOLSON":                     14,
+  "BOLSÓN":                     14,
+};
 
 const parseAs = (val: string | undefined) =>
   parseFloat(String(val || "0").replace(",", "."));
@@ -646,14 +676,21 @@ export default function Map() {
     const avgPh    = base.length>0?base.reduce((a,p)=>a+parseAs(p.Ph),0)/base.length:0;
     const avgTemp  = base.length>0?base.reduce((a,p)=>a+parseAs(p.T_ºC),0)/base.length:0;
 
-    const getLimiteFluor = (temp: number) => {
-      if (temp < 10)   return { limite: 1.7, rango: "T < 10°C" };
-      if (temp < 12)   return { limite: 1.5, rango: "10°C ≤ T < 12°C" };
-      if (temp < 14.7) return { limite: 1.3, rango: "12°C ≤ T < 14.7°C" };
-      if (temp < 17.7) return { limite: 1.2, rango: "14.7°C ≤ T < 17.7°C" };
-      return { limite: 1.0, rango: "T ≥ 17.7°C" };
+    // ── Temperatura media anual según departamento seleccionado (CAA Art. 982) ──
+    const dptoKey = (infDept!=="TODOS" ? infDept : base[0]?.Departamento || "").toUpperCase();
+    const tempAnual = TEMP_DPTO[dptoKey] ?? avgTemp; // fallback a promedio del CSV si no está en tabla
+
+    // ── Límite CAA de Flúor según temperatura promedio (Art. 982) ──
+    // 6 rangos con límite inferior y superior
+    const getLimiteFluor = (temp: number): {limInf: number; limSup: number; rango: string} => {
+      if (temp <= 12.0)  return { limInf: 0.9, limSup: 1.7, rango: "10.0–12.0°C" };
+      if (temp <= 14.6)  return { limInf: 0.8, limSup: 1.5, rango: "12.1–14.6°C" };
+      if (temp <= 17.6)  return { limInf: 0.8, limSup: 1.3, rango: "14.7–17.6°C" };
+      if (temp <= 21.4)  return { limInf: 0.7, limSup: 1.2, rango: "17.7–21.4°C" };
+      if (temp <= 26.2)  return { limInf: 0.7, limSup: 1.0, rango: "21.5–26.2°C" };
+      return               { limInf: 0.6, limSup: 0.8, rango: "26.3–32.6°C" };
     };
-    const fluorInfo = getLimiteFluor(avgTemp);
+    const fluorInfo = getLimiteFluor(tempAnual);
 
     const estG  = avgAs>0.05?"⛔ ALERTA":avgAs>0.01?"⚠️ PRECAUCIÓN":"✅ NORMAL";
     const estColor = avgAs>0.05?"#ef4444":avgAs>0.01?"#f59e0b":"#22c55e";
@@ -787,7 +824,7 @@ export default function Map() {
     <thead>${tr(["Parámetro","Promedio","Límite OMS","Estado"],true)}</thead>
     <tbody>
       ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "0.010 mg/L", `<span class="${avgAs>0.01?"supera":avgAs>0.008?"limite":"ok"}">${avgAs>0.01?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["Flúor", avgFluor.toFixed(2)+" mg/L", fluorInfo.limite+" mg/L", `<span class="${avgFluor>fluorInfo.limite?"supera":avgFluor>fluorInfo.limite*0.8?"limite":"ok"}">${avgFluor>fluorInfo.limite?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Flúor", avgFluor.toFixed(2)+" mg/L", `${fluorInfo.limInf}–${fluorInfo.limSup} mg/L`, `<span class="${avgFluor>fluorInfo.limSup?"supera":avgFluor<fluorInfo.limInf?"limite":"ok"}">${avgFluor>fluorInfo.limSup?"⛔ Supera":"✅ Normal"}</span>`])}
       ${tr(["Nitratos (NO3)", avgNO3.toFixed(1)+" mg/L", "10 mg/L (OMS)", `<span class="${avgNO3>10?"supera":avgNO3>8?"limite":"ok"}">${avgNO3>10?"⛔ Supera":"✅ Normal"}</span>`])}
       ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "1000 mg/L", `<span class="${avgTDS>1000?"supera":avgTDS>800?"limite":"ok"}">${avgTDS>1000?"⛔ Supera":"✅ Normal"}</span>`])}
       ${tr(["pH", avgPh.toFixed(1), "6.5 – 8.5", `<span class="${avgPh<6.5||avgPh>8.5?"supera":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
@@ -903,14 +940,14 @@ export default function Map() {
       <thead>${tr(["Parámetro","Límite CAA","Unidad","Promedio medido","Estado"],true)}</thead>
       <tbody>
         ${tr(["Arsénico (As)", "0.010", "mg/L", avgAs.toFixed(3), `<span class="${avgAs>0.01?"supera":"ok"}">${avgAs>0.01?"⛔ Supera":"✅ Normal"}</span>`])}
-        ${tr([`Flúor (${fluorInfo.rango})`, String(fluorInfo.limite), "mg/L", avgFluor.toFixed(2), `<span class="${avgFluor>fluorInfo.limite?"supera":"ok"}">${avgFluor>fluorInfo.limite?"⛔ Supera":"✅ Normal"}</span>`])}
+        ${tr([`Flúor (${fluorInfo.rango})`, `${fluorInfo.limInf}–${fluorInfo.limSup}`, "mg/L", avgFluor.toFixed(2), `<span class="${avgFluor>fluorInfo.limSup?"supera":avgFluor<fluorInfo.limInf?"limite":"ok"}">${avgFluor>fluorInfo.limSup?"⛔ Supera límite sup.":avgFluor<fluorInfo.limInf?"⚠️ Bajo límite inf.":"✅ Normal"}</span>`])}
         ${tr(["Nitratos (NO3⁻)", "45.0", "mg/L", avgNO3.toFixed(1), `<span class="${avgNO3>45?"supera":"ok"}">${avgNO3>45?"⛔ Supera":"✅ Normal"}</span>`])}
         ${tr(["TDS", "1500", "mg/L", avgTDS.toFixed(0), `<span class="${avgTDS>1500?"supera":"ok"}">${avgTDS>1500?"⛔ Supera":"✅ Normal"}</span>`])}
       </tbody>
     </table>
     <p class="nota">
       Nota: El límite de Flúor del CAA (Art. 982) varía según la temperatura media anual del agua.
-      Temperatura promedio registrada: ${avgTemp>0?avgTemp.toFixed(1):"s/d"}°C — límite aplicado: ${fluorInfo.limite} mg/L (${fluorInfo.rango}).<br>
+      Temperatura media anual de referencia (${dptoKey||"Catamarca"}): ${tempAnual}°C — Rango CAA: ${fluorInfo.rango} → Límite inferior: ${fluorInfo.limInf} mg/L · Límite superior: ${fluorInfo.limSup} mg/L.<br>
       Fuente: Código Alimentario Argentino — Arts. 982 y 983. OMS: Guías para la calidad del agua potable, 4ª ed.
     </p>
   </div>
@@ -971,9 +1008,10 @@ export default function Map() {
                 {t.menuPrincipal}
               </p>
               {([
-                { key:"informes", icon:"📄", label:t.generarInformes },
-                { key:"capas",    icon:"🗺️", label:t.capasGis },
-                { key:"acerca",   icon:"ℹ️", label:t.acercaSistema },
+                { key:"informes",     icon:"📄", label:t.generarInformes },
+                { key:"capas",        icon:"🗺️", label:t.capasGis },
+                { key:"temperaturas", icon:"🌡️", label:"Temperaturas / Flúor CAA" },
+                { key:"acerca",       icon:"ℹ️", label:t.acercaSistema },
               ] as { key: PanelMenu & string; icon: string; label: string }[]).map(item=>(
                 <button
                   key={item.key}
@@ -1133,6 +1171,94 @@ export default function Map() {
                   </div>
                 ))
               }
+            </div>
+          )}
+
+
+          {/* ── PANEL TEMPERATURAS / FLÚOR CAA ── */}
+          {panelMenu==="temperaturas" && (
+            <div className="absolute left-0 top-12 w-[420px] rounded-xl border border-slate-700 bg-slate-950 p-5 shadow-2xl text-white z-[11000] max-h-[85vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-cyan-400">🌡️ Temperaturas Medias Anuales — Flúor CAA</h3>
+                <button onClick={()=>setPanelMenu(null)} className="text-slate-400 hover:text-white text-lg leading-none">✕</button>
+              </div>
+
+              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                Límites de Flúor según <strong className="text-cyan-300">Código Alimentario Argentino Art. 982</strong> en función de la temperatura media anual de cada departamento.
+              </p>
+
+              {/* Tabla */}
+              <div className="rounded-xl overflow-hidden border border-slate-700 mb-4">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-cyan-900/60 text-cyan-300">
+                      <th className="text-left px-3 py-2">Departamento</th>
+                      <th className="text-center px-3 py-2">T° media anual</th>
+                      <th className="text-center px-3 py-2">Rango CAA</th>
+                      <th className="text-center px-3 py-2">F⁻ (mg/L)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { dpto:"Antofagasta de la Sierra", temp:10 },
+                      { dpto:"Bolsón",                   temp:14 },
+                      { dpto:"Belén",                    temp:17 },
+                      { dpto:"Tinogasta",                temp:17 },
+                      { dpto:"Ambato",                   temp:17 },
+                      { dpto:"Santa María",              temp:16 },
+                      { dpto:"El Alto",                  temp:18 },
+                      { dpto:"Andalgalá",                temp:18 },
+                      { dpto:"Ancasti",                  temp:19 },
+                      { dpto:"Fray M. Esquiú",           temp:20 },
+                      { dpto:"Capayán",                  temp:20 },
+                      { dpto:"Pomán",                    temp:20 },
+                      { dpto:"Santa Rosa",               temp:20 },
+                      { dpto:"La Paz",                   temp:21 },
+                      { dpto:"Capital",                  temp:22 },
+                      { dpto:"Valle Viejo",              temp:22 },
+                    ].map((row, i) => {
+                      const fl = row.temp<=12?{inf:0.9,sup:1.7,rango:"10.0–12.0°C"}
+                               : row.temp<=14.6?{inf:0.8,sup:1.5,rango:"12.1–14.6°C"}
+                               : row.temp<=17.6?{inf:0.8,sup:1.3,rango:"14.7–17.6°C"}
+                               : row.temp<=21.4?{inf:0.7,sup:1.2,rango:"17.7–21.4°C"}
+                               : row.temp<=26.2?{inf:0.7,sup:1.0,rango:"21.5–26.2°C"}
+                               : {inf:0.6,sup:0.8,rango:"26.3–32.6°C"};
+                      return (
+                        <tr key={row.dpto} className={i%2===0?"bg-slate-900":"bg-slate-800/50"}>
+                          <td className="px-3 py-2 text-slate-200 font-medium">{row.dpto}</td>
+                          <td className="px-3 py-2 text-center text-amber-300 font-bold">{row.temp}°C</td>
+                          <td className="px-3 py-2 text-center text-slate-400">{fl.rango}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className="text-cyan-300 font-bold">{fl.inf}–{fl.sup}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Leyenda rangos CAA */}
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Rangos CAA — Art. 982</p>
+              <div className="space-y-1.5">
+                {[
+                  { rango:"10.0–12.0°C", inf:0.9, sup:1.7 },
+                  { rango:"12.1–14.6°C", inf:0.8, sup:1.5 },
+                  { rango:"14.7–17.6°C", inf:0.8, sup:1.3 },
+                  { rango:"17.7–21.4°C", inf:0.7, sup:1.2 },
+                  { rango:"21.5–26.2°C", inf:0.7, sup:1.0 },
+                  { rango:"26.3–32.6°C", inf:0.6, sup:0.8 },
+                ].map(r=>(
+                  <div key={r.rango} className="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-1.5 text-xs">
+                    <span className="text-slate-400">T° {r.rango}</span>
+                    <span className="text-cyan-300 font-bold">{r.inf}–{r.sup} mg/L</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-4 text-[10px] text-slate-500 leading-relaxed">
+                Fuente: Código Alimentario Argentino, Art. 982. Temperaturas medias anuales basadas en datos del SMN e INTA Catamarca. Valores referenciales — para uso oficial validar con fuentes primarias.
+              </p>
             </div>
           )}
 
