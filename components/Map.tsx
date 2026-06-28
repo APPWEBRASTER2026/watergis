@@ -522,10 +522,68 @@ export default function Map() {
   // LOAD DATA
   // ======================================================
 
+  // ── Pop-up nuevos puntos ──
+  const [popupNuevos, setPopupNuevos] = useState<{
+    visible: boolean;
+    total: number;
+    porDpto: {dpto: string; cantidad: number}[];
+    fecha: string;
+  }>({ visible: false, total: 0, porDpto: [], fecha: "" });
+
   useEffect(() => {
     Papa.parse("/pozos.csv", {
       download: true, header: true, skipEmptyLines: true,
-      complete: (r) => setPoints(r.data as Punto[]),
+      complete: (r) => {
+        const data = r.data as Punto[];
+        setPoints(data);
+
+        // ── Detectar puntos nuevos ──
+        const STORAGE_KEY_PUNTOS = "watergis_puntos_vistos";
+        const hoy = new Date().toISOString().split("T")[0]; // "2026-06-25"
+
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY_PUNTOS);
+          const visto = saved ? JSON.parse(saved) : {};
+
+          // Contar puntos actuales por departamento
+          const actualPorDpto: Record<string, number> = {};
+          data.forEach(p => {
+            if (!p.Departamento) return;
+            actualPorDpto[p.Departamento] = (actualPorDpto[p.Departamento]||0) + 1;
+          });
+
+          // Comparar con lo que el usuario ya vio
+          const nuevosPorDpto: {dpto: string; cantidad: number}[] = [];
+          let totalNuevos = 0;
+
+          Object.entries(actualPorDpto).forEach(([dpto, count]) => {
+            const vistoCount = visto[dpto] || 0;
+            if (count > vistoCount) {
+              const diff = count - vistoCount;
+              nuevosPorDpto.push({ dpto, cantidad: diff });
+              totalNuevos += diff;
+            }
+          });
+
+          // Mostrar pop-up solo si hay puntos nuevos Y no lo vio hoy
+          const ultimaVez = visto["__ultima_vez"] || "";
+          if (totalNuevos > 0 && ultimaVez !== hoy) {
+            setPopupNuevos({
+              visible: true,
+              total: totalNuevos,
+              porDpto: nuevosPorDpto,
+              fecha: hoy,
+            });
+          }
+
+          // Guardar el estado actual para la próxima visita
+          const nuevoVisto = { ...actualPorDpto, "__ultima_vez": hoy };
+          localStorage.setItem(STORAGE_KEY_PUNTOS, JSON.stringify(nuevoVisto));
+
+        } catch(e) {
+          // Si falla localStorage simplemente no mostramos el pop-up
+        }
+      },
     });
   }, []);
 
@@ -852,10 +910,10 @@ export default function Map() {
   ${puntosAltosAs.length>0?`
   <h3>Puntos críticos — As alto (&gt; 0.05 mg/L)</h3>
   <table>
-    <thead>${tr(["Localidad","Departamento","Fuente","As (mg/L)","Estado"],true)}</thead>
+    <thead>${tr(["Localidad","Departamento","Punto de muestreo","Fuente","As (mg/L)","Estado"],true)}</thead>
     <tbody>
       ${puntosAltosAs.map(p=>tr([
-        p.Localidad||"-", p.Departamento||"-", p.Fuente||"-",
+        p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-", p.Fuente||"-",
         parseAs(p.As_mg_l).toFixed(3),
         '<span class="supera">⛔ ALTO</span>'
       ])).join("")}
@@ -893,10 +951,10 @@ export default function Map() {
   ${puntosAltosNo3.length>0?`
   <h3>Puntos críticos — NO3 alto (&gt; 10 mg/L)</h3>
   <table>
-    <thead>${tr(["Localidad","Departamento","Fuente","NO3 (mg/L)","Estado"],true)}</thead>
+    <thead>${tr(["Localidad","Departamento","Punto de muestreo","Fuente","NO3 (mg/L)","Estado"],true)}</thead>
     <tbody>
       ${puntosAltosNo3.map(p=>tr([
-        p.Localidad||"-", p.Departamento||"-", p.Fuente||"-",
+        p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-", p.Fuente||"-",
         parseAs(p.NO3_mg_l).toFixed(1),
         '<span class="supera">⛔ ALTO</span>'
       ])).join("")}
@@ -978,6 +1036,64 @@ export default function Map() {
 
       {/* ===== PANTALLA DE LOGIN ===== */}
       {loginVisible && <LoginScreen onLogin={handleLogin} />}
+
+      {/* ===== POP-UP NUEVOS PUNTOS ===== */}
+      {popupNuevos.visible && !loginVisible && (
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm mx-4 rounded-2xl border border-cyan-500/40 bg-slate-950 p-6 shadow-2xl text-white">
+
+            {/* Cabecera */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-xl">
+                💧
+              </div>
+              <div>
+                <p className="font-bold text-cyan-400 text-sm">Nuevos puntos de monitoreo</p>
+                <p className="text-xs text-slate-500">{new Date().toLocaleDateString("es-AR", {day:"numeric",month:"long",year:"numeric"})}</p>
+              </div>
+              <button
+                onClick={()=>setPopupNuevos(p=>({...p,visible:false}))}
+                className="ml-auto text-slate-500 hover:text-white text-lg leading-none"
+              >✕</button>
+            </div>
+
+            {/* Cuerpo */}
+            <p className="text-sm text-slate-300 mb-4">
+              Se agregaron <span className="font-bold text-white">{popupNuevos.total} nuevos puntos</span> de monitoreo desde tu última visita:
+            </p>
+
+            {/* Tags por departamento */}
+            <div className="flex flex-wrap gap-2 mb-5">
+              {popupNuevos.porDpto.map(({dpto, cantidad})=>(
+                <span key={dpto}
+                  className="rounded-lg border border-green-500/30 bg-green-500/10 text-green-400 text-xs px-3 py-1.5 font-medium">
+                  {dpto} <span className="font-bold">+{cantidad}</span>
+                </span>
+              ))}
+            </div>
+
+            {/* Botones */}
+            <div className="flex gap-2">
+              <button
+                onClick={()=>setPopupNuevos(p=>({...p,visible:false}))}
+                className="flex-1 rounded-xl border border-slate-700 py-2.5 text-sm text-slate-400 hover:bg-slate-800 transition-colors">
+                Cerrar
+              </button>
+              <button
+                onClick={()=>{
+                  setPopupNuevos(p=>({...p,visible:false}));
+                  // Si hay un solo dpto, filtrar por él
+                  if(popupNuevos.porDpto.length===1){
+                    setSelectedFiltDept(popupNuevos.porDpto[0].dpto);
+                  }
+                }}
+                className="flex-1 rounded-xl bg-cyan-500 py-2.5 text-sm font-bold text-black hover:bg-cyan-400 transition-colors">
+                Ver en el mapa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== BANNER VISITANTE ===== */}
       {!loginVisible && !esAutenticado && (
