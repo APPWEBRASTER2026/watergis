@@ -318,28 +318,44 @@ function HeatLayer({ points, param }: { points: Punto[]; param: string }) {
     const L = (window as any).L;
     if (!L?.heatLayer || !map) return;
 
-    const maxVal: Record<string,number> = { As:0.2, TDS:3000, Fluor:3 };
+    // Calcular percentil 90 para normalización dinámica
+    const valores = points
+      .map(p => {
+        if(param==="As")    return parseFloat(String(p.As_mg_l||"0").replace(",","."));
+        if(param==="TDS")   return parseFloat(String(p.TDS_mg_l||"0").replace(",","."));
+        if(param==="Fluor") return parseFloat(String(p.Fluor_mg_l||"0").replace(",","."));
+        return 0;
+      })
+      .filter(v => !isNaN(v) && v > 0)
+      .sort((a,b)=>a-b);
 
-    const getData = (p: Punto): number => {
-      if(param==="As")    return parseFloat(String(p.As_mg_l||"0").replace(",","."));
-      if(param==="TDS")   return parseFloat(String(p.TDS_mg_l||"0").replace(",","."));
-      if(param==="Fluor") return parseFloat(String(p.Fluor_mg_l||"0").replace(",","."));
-      return 0;
-    };
+    const p90 = valores.length > 0
+      ? valores[Math.floor(valores.length * 0.9)]
+      : 1;
+    const maxRef = Math.max(p90, 0.001);
 
     const heatData = points
       .map(p => {
         const lat = parseFloat(p.Latitud?.toString().replace(",","."));
         const lng = parseFloat(p.Longitud?.toString().replace(",","."));
         if(isNaN(lat)||isNaN(lng)) return null;
-        const val = Math.min(getData(p) / (maxVal[param]||1), 1);
-        return [lat, lng, val] as [number,number,number];
+        let val = 0;
+        if(param==="As")    val = parseFloat(String(p.As_mg_l||"0").replace(",","."));
+        if(param==="TDS")   val = parseFloat(String(p.TDS_mg_l||"0").replace(",","."));
+        if(param==="Fluor") val = parseFloat(String(p.Fluor_mg_l||"0").replace(",","."));
+        // Normalizar contra percentil 90 — valores altos destacan mucho más
+        const intensity = Math.min(val / maxRef, 1.5);
+        return [lat, lng, intensity] as [number,number,number];
       })
       .filter((x): x is [number,number,number] => x !== null);
 
     const heat = L.heatLayer(heatData, {
-      radius:25, blur:20, maxZoom:12,
-      gradient:{ 0.2:"#22c55e", 0.5:"#f59e0b", 0.8:"#ef4444", 1.0:"#7f1d1d" }
+      radius:45,
+      blur:35,
+      maxZoom:18,
+      max:1.0,
+      minOpacity:0.3,
+      gradient:{ 0.0:"#22c55e", 0.3:"#86efac", 0.5:"#f59e0b", 0.75:"#ef4444", 1.0:"#7f1d1d" }
     }).addTo(map);
 
     return () => { try{ map.removeLayer(heat); }catch{} };
