@@ -17,6 +17,7 @@ import {
   Popup,
   LayersControl,
   GeoJSON,
+  useMap,
 } from "react-leaflet";
 
 import {
@@ -306,6 +307,47 @@ const fontFamilies: Record<Tipografia, string> = {
 // MINI KPI
 // ======================================================
 
+// ======================================================
+// HEAT LAYER COMPONENT
+// ======================================================
+
+function HeatLayer({ points, param }: { points: Punto[]; param: string }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const L = (window as any).L;
+    if (!L?.heatLayer || !map) return;
+
+    const maxVal: Record<string,number> = { As:0.2, TDS:3000, Fluor:3 };
+
+    const getData = (p: Punto): number => {
+      if(param==="As")    return parseFloat(String(p.As_mg_l||"0").replace(",","."));
+      if(param==="TDS")   return parseFloat(String(p.TDS_mg_l||"0").replace(",","."));
+      if(param==="Fluor") return parseFloat(String(p.Fluor_mg_l||"0").replace(",","."));
+      return 0;
+    };
+
+    const heatData = points
+      .map(p => {
+        const lat = parseFloat(p.Latitud?.toString().replace(",","."));
+        const lng = parseFloat(p.Longitud?.toString().replace(",","."));
+        if(isNaN(lat)||isNaN(lng)) return null;
+        const val = Math.min(getData(p) / (maxVal[param]||1), 1);
+        return [lat, lng, val] as [number,number,number];
+      })
+      .filter((x): x is [number,number,number] => x !== null);
+
+    const heat = L.heatLayer(heatData, {
+      radius:25, blur:20, maxZoom:12,
+      gradient:{ 0.2:"#22c55e", 0.5:"#f59e0b", 0.8:"#ef4444", 1.0:"#7f1d1d" }
+    }).addTo(map);
+
+    return () => { try{ map.removeLayer(heat); }catch{} };
+  }, [points, param, map]);
+
+  return null;
+}
+
 function MiniKPI({ title, subtitle, value, icon }: {
   title: string; subtitle?: string; value: any; icon?: any;
 }) {
@@ -517,6 +559,19 @@ export default function Map() {
   const [showCuencas, setShowCuencas]     = useState(true);
   const [rios, setRios]                   = useState<any>(null);
   const [showRios, setShowRios]           = useState(true);
+
+  // Mapa de calor
+  const [heatParam, setHeatParam] = useState<"ninguno"|"As"|"TDS"|"Fluor">("ninguno");
+  const [heatReady, setHeatReady] = useState(false);
+
+  useEffect(()=>{
+    if(typeof window==="undefined") return;
+    if((window as any).L?.HeatLayer){ setHeatReady(true); return; }
+    const s=document.createElement("script");
+    s.src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js";
+    s.async=true; s.onload=()=>setHeatReady(true);
+    document.head.appendChild(s);
+  },[]);
 
   // ======================================================
   // LOAD DATA
@@ -788,10 +843,17 @@ export default function Map() {
     const fecha = new Date().toLocaleDateString("es-AR");
     const nombreBase2 = soloLoc ? infLoc : soloDepto ? `Departamento_${infDept}` : "General";
 
-    const puntosAltosAs = base.filter(p=>parseAs(p.As_mg_l)>0.05)
-      .sort((a,b)=>parseAs(b.As_mg_l)-parseAs(a.As_mg_l)).slice(0,10);
-    const puntosAltosNo3 = base.filter(p=>parseAs(p.NO3_mg_l)>10)
-      .sort((a,b)=>parseAs(b.NO3_mg_l)-parseAs(a.NO3_mg_l)).slice(0,10);
+    // Límites CAA para puntos críticos
+    const LIM_AS  = 0.01;   // CAA Art. 982 — Arsénico
+    const LIM_NO3 = 45.0;   // CAA Art. 983 — Nitratos
+    const LIM_TDS = 1500;   // CAA — Sólidos disueltos totales
+
+    const puntosAltosAs  = base.filter(p=>parseAs(p.As_mg_l)>LIM_AS)
+      .sort((a,b)=>parseAs(b.As_mg_l)-parseAs(a.As_mg_l)).slice(0,15);
+    const puntosAltosNo3 = base.filter(p=>parseAs(p.NO3_mg_l)>LIM_NO3)
+      .sort((a,b)=>parseAs(b.NO3_mg_l)-parseAs(a.NO3_mg_l)).slice(0,15);
+    const puntosAltosTDS = base.filter(p=>parseFloat(String(p.TDS_mg_l||"0").replace(",","."))>LIM_TDS)
+      .sort((a,b)=>parseFloat(String(b.TDS_mg_l||"0").replace(",","."))-parseFloat(String(a.TDS_mg_l||"0").replace(",","."))).slice(0,15);
 
     const conclusion = soloLoc
       ? `La localidad de ${infLoc} presenta una calidad de agua generalmente estable. Se identifican concentraciones elevadas de arsénico en determinados sectores, por lo que se recomienda continuar con el monitoreo periódico y mantener controles preventivos sobre las fuentes de abastecimiento.`
@@ -908,14 +970,14 @@ export default function Map() {
   </div>
 
   ${puntosAltosAs.length>0?`
-  <h3>Puntos críticos — As alto (&gt; 0.05 mg/L)</h3>
+  <h3>Puntos críticos — Arsénico (As) superior al límite CAA (&gt; 0.01 mg/L)</h3>
   <table>
     <thead>${tr(["Localidad","Departamento","Punto de muestreo","Fuente","As (mg/L)","Estado"],true)}</thead>
     <tbody>
       ${puntosAltosAs.map(p=>tr([
         p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-", p.Fuente||"-",
         parseAs(p.As_mg_l).toFixed(3),
-        '<span class="supera">⛔ ALTO</span>'
+        '<span class="supera">⛔ Supera CAA</span>'
       ])).join("")}
     </tbody>
   </table>
@@ -949,24 +1011,48 @@ export default function Map() {
   </div>
 
   ${puntosAltosNo3.length>0?`
-  <h3>Puntos críticos — NO3 alto (&gt; 10 mg/L)</h3>
+  <h3>Puntos críticos — Nitratos (NO3⁻) superior al límite CAA (&gt; 45 mg/L)</h3>
   <table>
     <thead>${tr(["Localidad","Departamento","Punto de muestreo","Fuente","NO3 (mg/L)","Estado"],true)}</thead>
     <tbody>
       ${puntosAltosNo3.map(p=>tr([
         p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-", p.Fuente||"-",
         parseAs(p.NO3_mg_l).toFixed(1),
-        '<span class="supera">⛔ ALTO</span>'
+        '<span class="supera">⛔ Supera CAA</span>'
       ])).join("")}
     </tbody>
   </table>
   <h3>Riesgo alto de NO3 por tipo de fuente</h3>
   <table>
-    <thead>${tr(["Tipo de fuente","Puntos en riesgo alto","% del total en riesgo"],true)}</thead>
+    <thead>${tr(["Tipo de fuente","Puntos que superan CAA","% del total que supera"],true)}</thead>
     <tbody>
       ${[["Subterránea","SUBTERRANEA"],["Superficial","SUPERFICIAL"],["Mezcla","MEZCLA"]].map(([label,key])=>{
-        const n=base.filter(p=>parseAs(p.NO3_mg_l)>10&&p.Fuente===key).length;
-        return tr([label, `${n} puntos`, no3Alto>0?((n/no3Alto)*100).toFixed(1)+"%":"0%"]);
+        const n=base.filter(p=>parseAs(p.NO3_mg_l)>45&&p.Fuente===key).length;
+        return tr([label, `${n} puntos`, puntosAltosNo3.length>0?((n/puntosAltosNo3.length)*100).toFixed(1)+"%":"0%"]);
+      }).join("")}
+    </tbody>
+  </table>`:""}
+
+  ${puntosAltosTDS.length>0?`
+  <h2>PUNTOS CRÍTICOS — SÓLIDOS DISUELTOS TOTALES (TDS)</h2>
+  <h3>Puntos que superan el límite CAA (&gt; 1500 mg/L)</h3>
+  <table>
+    <thead>${tr(["Localidad","Departamento","Punto de muestreo","Fuente","TDS (mg/L)","Estado"],true)}</thead>
+    <tbody>
+      ${puntosAltosTDS.map(p=>tr([
+        p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-", p.Fuente||"-",
+        parseFloat(String(p.TDS_mg_l||"0").replace(",",".")).toFixed(0),
+        '<span class="supera">⛔ Supera CAA</span>'
+      ])).join("")}
+    </tbody>
+  </table>
+  <h3>TDS sobre límite CAA por tipo de fuente</h3>
+  <table>
+    <thead>${tr(["Tipo de fuente","Puntos que superan CAA","% del total que supera"],true)}</thead>
+    <tbody>
+      ${[["Subterránea","SUBTERRANEA"],["Superficial","SUPERFICIAL"],["Mezcla","MEZCLA"]].map(([label,key])=>{
+        const n=base.filter(p=>parseFloat(String(p.TDS_mg_l||"0").replace(",","."))>1500&&p.Fuente===key).length;
+        return tr([label, `${n} puntos`, puntosAltosTDS.length>0?((n/puntosAltosTDS.length)*100).toFixed(1)+"%":"0%"]);
       }).join("")}
     </tbody>
   </table>`:""}
@@ -1682,6 +1768,48 @@ export default function Map() {
           </div>
         </div>
 
+        {/* ===== MAPA DE CALOR ===== */}
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-lg">🔥</span>
+            <h3 className="text-sm font-bold text-cyan-400">Mapa de Calor</h3>
+          </div>
+          <p className="text-[10px] text-slate-500 mb-3">Visualizá la intensidad de un parámetro sobre el mapa.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { key:"ninguno", label:"Desactivar", color:"border-slate-700 text-slate-500" },
+              { key:"As",      label:"Arsénico",   color:"border-cyan-500 text-cyan-300"   },
+              { key:"TDS",     label:"TDS",         color:"border-amber-500 text-amber-300" },
+              { key:"Fluor",   label:"Flúor",       color:"border-purple-500 text-purple-300" },
+            ] as {key:string;label:string;color:string}[]).map(opt=>(
+              <button
+                key={opt.key}
+                onClick={()=>setHeatParam(opt.key as any)}
+                className={`rounded-xl border p-2 text-xs font-semibold transition-all ${
+                  heatParam===opt.key
+                    ? opt.color+" bg-slate-800"
+                    : "border-slate-800 bg-slate-950 text-slate-500 hover:border-slate-600"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {heatParam!=="ninguno" && (
+            <div className="mt-3 pt-3 border-t border-slate-800">
+              <p className="text-[10px] text-slate-500 mb-2">Intensidad</p>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-slate-500">Bajo</span>
+                <div className="flex-1 h-3 rounded-full" style={{background:"linear-gradient(to right, #22c55e, #f59e0b, #ef4444, #7f1d1d)"}}/>
+                <span className="text-[9px] text-slate-500">Alto</span>
+              </div>
+            </div>
+          )}
+          {!heatReady && heatParam!=="ninguno" && (
+            <p className="text-[10px] text-amber-400 mt-2">⏳ Cargando plugin...</p>
+          )}
+        </div>
+
         {/* INFORMACIÓN — formato compacto */}
         <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3">
           <h3 className="mb-2 text-xs font-bold text-cyan-400 uppercase tracking-wider">{t.informacion}</h3>
@@ -1724,6 +1852,9 @@ export default function Map() {
         </LayersControl>
 
         {showCuencas && cuencas && <GeoJSON data={cuencas} style={cuencaStyle}/>}
+        {heatParam!=="ninguno" && heatReady && (
+          <HeatLayer points={visiblePoints} param={heatParam} />
+        )}
         {showRios && rios && <GeoJSON data={rios} style={{color:"#0c2dc4",weight:2,opacity:1}}/>}
         {showDepartamentos && departamentos && <GeoJSON data={departamentos} style={{color:"#39ff14",weight:2,fillOpacity:0}}/>}
 
