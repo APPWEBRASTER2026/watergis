@@ -2075,7 +2075,6 @@ export default function Map() {
             <div className="grid grid-cols-3 gap-1.5">
               {([
                 {key:"TODOS", label:"Todos",  color:"border-slate-700 text-slate-400"},
-                {key:"POZO",  label:"Pozos",  color:"border-cyan-500 text-cyan-300"},
                 {key:"DIQUE", label:"Diques", color:"border-blue-500 text-blue-300"},
                 {key:"RED",   label:"Red",    color:"border-purple-500 text-purple-300"},
               ] as {key:string;label:string;color:string}[]).map(opt=>(
