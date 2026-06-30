@@ -66,6 +66,16 @@ const redIcon = new L.Icon({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
   iconSize: [25, 41], iconAnchor: [12, 41],
 });
+const blueIcon = new L.Icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41], iconAnchor: [12, 41],
+});
+const violetIcon = new L.Icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41], iconAnchor: [12, 41],
+});
 
 // ======================================================
 // TYPES
@@ -73,10 +83,14 @@ const redIcon = new L.Icon({
 
 type Punto = {
   Localidad: string; Departamento: string; Fuente: string;
+  Tipo_Punto: string;
   PUNTO_DE_MUESTREO: string; Fecha_de_monitoreo: string;
   Ph: string; T_ºC: string; TDS_mg_l: string; Turb_NTU: string;
   Salinidad_mg_l: string; As_mg_l: string; Fluor_mg_l: string;
-  NO3_mg_l: string; Latitud: string; Longitud: string;
+  NO3_mg_l: string;
+  OD_mg_l: string; Sat_O2_pct: string; Clorofila_ug_l: string;
+  Algas_BGA: string; Cloro_libre_mg_l: string;
+  Latitud: string; Longitud: string;
 };
 
 type Idioma    = "es" | "en" | "de" | "pt";
@@ -290,8 +304,8 @@ const TEMP_DPTO: Record<string, number> = {
   "ANDALGALÁ":                  18,
   "SANTA ROSA":                 20,
   "ANTOFAGASTA DE LA SIERRA":   10,
-  "BOLSON":                     14,
-  "BOLSÓN":                     14,
+  "PACLIN":                     19,
+  "PACLÍN":                     19,
 };
 
 const parseAs = (val: string | undefined) =>
@@ -497,6 +511,10 @@ export default function Map() {
   // Estado para el parámetro seleccionado en cada popup (clave: punto_localidad)
   const [popupVar, setPopupVar] = useState<Record<string,string>>({});
 
+  // Filtro tipo de punto
+  const [tipoPunto, setTipoPunto] = useState<"TODOS"|"POZO"|"DIQUE"|"RED">("TODOS");
+  const [infTipoPunto, setInfTipoPunto] = useState<"DIQUE"|"RED"|null>(null);
+
   // Filtro sidebar
   const [selectedFiltDept, setSelectedFiltDept] = useState("TODOS");
 
@@ -671,12 +689,13 @@ export default function Map() {
       const lat = parseFloat(p.Latitud?.toString().replace(",","."));
       const lng = parseFloat(p.Longitud?.toString().replace(",","."));
       if (isNaN(lat)||isNaN(lng)) return false;
+      const tipoOk = tipoPunto==="TODOS" || (p.Tipo_Punto||"POZO").toUpperCase()===tipoPunto;
       const deptOk = selectedFiltDept==="TODOS" || p.Departamento===selectedFiltDept;
       const locOk  = search.trim()==="" ? true : p.Localidad===search;
       const fOk    = selectedFuente==="TODAS" || p.Fuente===selectedFuente;
-      return deptOk && locOk && fOk;
+      return tipoOk && deptOk && locOk && fOk;
     });
-  }, [points, search, selectedFuente, selectedFiltDept]);
+  }, [points, search, selectedFuente, selectedFiltDept, tipoPunto]);
 
   // ======================================================
   // KPI
@@ -734,6 +753,8 @@ export default function Map() {
   // ======================================================
 
   const getMarkerIcon = (point: Punto) => {
+    if(point.Tipo_Punto==="DIQUE") return blueIcon;
+    if(point.Tipo_Punto==="RED") return violetIcon;
     if (selectedVariable==="As") {
       const as=parseAs(point.As_mg_l);
       if(as>0.05) return redIcon;
@@ -1128,6 +1149,322 @@ export default function Map() {
     setPdfLoading(false);
   };
 
+  // ======================================================
+  // GENERAR PDF — DIQUES Y RED (mismo formato visual)
+  // ======================================================
+
+  const generarPDFEspecial = (tipo: "DIQUE"|"RED") => {
+    setPdfLoading(true);
+
+    const base = points.filter(p => {
+      const lat = parseFloat(p.Latitud?.toString().replace(",","."));
+      const lng = parseFloat(p.Longitud?.toString().replace(",","."));
+      if(isNaN(lat)||isNaN(lng)) return false;
+      if((p.Tipo_Punto||"").toUpperCase()!==tipo) return false;
+      const dOk = infDept==="TODOS" || p.Departamento===infDept;
+      const lOk = infLoc==="TODAS"  || p.Localidad===infLoc;
+      return dOk && lOk;
+    });
+
+    const fecha = new Date().toLocaleDateString("es-AR");
+    const soloDepto = infDept!=="TODOS" && infLoc==="TODAS";
+    const soloLoc   = infLoc!=="TODAS";
+    const titulo2 = soloLoc
+      ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:base[0]?.Departamento||"").toUpperCase()}`
+      : soloDepto ? `DEPARTAMENTO ${infDept.toUpperCase()}`
+      : `PROVINCIA DE CATAMARCA — TODOS ${tipo==="DIQUE"?"LOS DIQUES":"LOS PUNTOS DE RED"}`;
+    const nombreBase2 = soloLoc ? infLoc : soloDepto ? `Departamento_${infDept}` : "General";
+
+    const num = (v:string|undefined) => parseFloat(String(v||"0").replace(",","."));
+    const avg = (arr:Punto[], f:(p:Punto)=>number) => arr.length>0 ? arr.reduce((a,p)=>a+f(p),0)/arr.length : 0;
+
+    const tr = (cells: string[], header=false) =>
+      `<tr>${cells.map(c=>`<${header?"th":"td"}>${c}</${header?"th":"td"}>`).join("")}</tr>`;
+
+    let html = "";
+
+    if(tipo==="DIQUE"){
+      // ── INDICADORES DIQUES ──
+      const avgOD    = avg(base, p=>num(p.OD_mg_l));
+      const avgSat   = avg(base, p=>num(p.Sat_O2_pct));
+      const avgCloro = avg(base, p=>num(p.Clorofila_ug_l));
+      const avgAs    = avg(base, p=>num(p.As_mg_l));
+      const avgTDS   = avg(base, p=>num(p.TDS_mg_l));
+      const avgPh    = avg(base, p=>num(p.Ph));
+
+      const odCritico   = base.filter(p=>num(p.OD_mg_l)<2).length;
+      const odBajo      = base.filter(p=>{const v=num(p.OD_mg_l);return v>=2&&v<5;}).length;
+      const odNormal    = base.filter(p=>num(p.OD_mg_l)>=5).length;
+
+      const cloroOligo  = base.filter(p=>num(p.Clorofila_ug_l)<3).length;
+      const cloroMeso   = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=3&&v<10;}).length;
+      const cloroEutro  = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=10&&v<50;}).length;
+      const cloroAlerta = base.filter(p=>num(p.Clorofila_ug_l)>=50).length;
+
+      const bgaAlto = base.filter(p=>(p.Algas_BGA||"").toUpperCase()==="ALTO").length;
+
+      const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
+
+      const diquesUnicos = [...new Set(base.map(p=>p.PUNTO_DE_MUESTREO))];
+
+      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Diques — ${nombreBase2}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; background: white; }
+  .page { padding: 18mm 16mm; }
+  h1 { font-size: 22px; color: #0e7490; margin-bottom: 2px; }
+  h2 { font-size: 13px; color: #0e7490; border-left: 4px solid #06b6d4; padding-left: 8px; margin: 16px 0 8px; }
+  h3 { font-size: 11px; color: #475569; margin: 12px 0 6px; }
+  .subtitle { font-size: 12px; color: #334155; margin-bottom: 2px; }
+  .header-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
+  th { background: #0e7490; color: white; padding: 6px 8px; text-align: left; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .bar-label { width: 180px; flex-shrink: 0; font-size: 10px; }
+  .bar-wrap { flex: 1; background: #e2e8f0; border-radius: 4px; height: 12px; }
+  .bar-fill { height: 12px; border-radius: 4px; }
+  .bar-val { width: 90px; text-align: right; font-size: 10px; font-weight: bold; }
+  .caa-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-top: 16px; }
+  .caa-box h2 { color: #15803d; border-left-color: #22c55e; }
+  .nota { font-size: 9px; color: #64748b; font-style: italic; margin-top: 8px; line-height: 1.5; }
+  .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; text-align: center; }
+  .supera { color: #dc2626; font-weight: bold; }
+  .ok { color: #16a34a; font-weight: bold; }
+  .alerta { color: #d97706; font-weight: bold; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { margin: 15mm; size: A4; } }
+</style></head><body><div class="page">
+
+  <div class="header-box">
+    <div class="header-top">
+      <div>
+        <h1>💧 WATERGIS</h1>
+        <div class="subtitle">INFORME DE DIQUES — MONITOREO DE CALIDAD DE AGUA</div>
+        <div class="subtitle"><strong>${titulo2}</strong></div>
+      </div>
+      <div style="text-align:right;font-size:10px;color:#64748b">
+        <div>Usuario: Nicolás Doria</div>
+        <div>Fecha: ${fecha}</div>
+        <div>Diques analizados: ${diquesUnicos.length} (${base.length} campañas)</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>INDICADORES PRINCIPALES — DIQUES</h2>
+  <table>
+    <thead>${tr(["Parámetro","Promedio","Rango óptimo","Estado"],true)}</thead>
+    <tbody>
+      ${tr(["Oxígeno Disuelto (OD)", avgOD.toFixed(1)+" mg/L", "≥ 5–6 mg/L", `<span class="${avgOD<2?"supera":avgOD<5?"alerta":"ok"}">${avgOD<2?"⛔ Hipoxia":avgOD<5?"⚠️ Bajo":"✅ Saludable"}</span>`])}
+      ${tr(["Saturación de O₂", avgSat.toFixed(0)+"%", "80% – 120%", `<span class="${avgSat<80||avgSat>120?"alerta":"ok"}">${avgSat<80?"⚠️ Bajo":avgSat>120?"⚠️ Sobresaturado":"✅ Excelente"}</span>`])}
+      ${tr(["Clorofila-a", avgCloro.toFixed(1)+" µg/L", "&lt; 10 µg/L", `<span class="${avgCloro>=50?"supera":avgCloro>=10?"alerta":"ok"}">${avgCloro>=50?"⛔ Floración":avgCloro>=10?"⚠️ Eutrófico":"✅ Normal"}</span>`])}
+      ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "&lt; 0.01 mg/L", `<span class="${avgAs>0.01?"supera":"ok"}">${avgAs>0.01?"⛔ Supera CAA":"✅ Normal"}</span>`])}
+      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "&lt; 1500 mg/L", `<span class="${avgTDS>1500?"supera":"ok"}">${avgTDS>1500?"⛔ Supera CAA":"✅ Normal"}</span>`])}
+      ${tr(["pH", avgPh.toFixed(1), "6.5 – 8.5", `<span class="${avgPh<6.5||avgPh>8.5?"alerta":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
+    </tbody>
+  </table>
+
+  <h2>DISTRIBUCIÓN — OXÍGENO DISUELTO (OD)</h2>
+  <div class="bar-row"><div class="bar-label">Hipóxico (&lt; 2 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(odCritico)}%"></div></div><div class="bar-val" style="color:#ef4444">${odCritico} (${pct(odCritico)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Bajo (2–5 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(odBajo)}%"></div></div><div class="bar-val" style="color:#f59e0b">${odBajo} (${pct(odBajo)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Saludable (≥ 5 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(odNormal)}%"></div></div><div class="bar-val" style="color:#22c55e">${odNormal} (${pct(odNormal)}%)</div></div>
+
+  <h2>ESTADO TRÓFICO — CLOROFILA-A</h2>
+  <div class="bar-row"><div class="bar-label">Oligotrófico (&lt; 3 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(cloroOligo)}%"></div></div><div class="bar-val" style="color:#22c55e">${cloroOligo} (${pct(cloroOligo)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Mesotrófico (3–10 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#84cc16;width:${pct(cloroMeso)}%"></div></div><div class="bar-val" style="color:#84cc16">${cloroMeso} (${pct(cloroMeso)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Eutrófico (10–50 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(cloroEutro)}%"></div></div><div class="bar-val" style="color:#f59e0b">${cloroEutro} (${pct(cloroEutro)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Floración (&gt; 50 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cloroAlerta)}%"></div></div><div class="bar-val" style="color:#ef4444">${cloroAlerta} (${pct(cloroAlerta)}%)</div></div>
+
+  ${base.filter(p=>num(p.OD_mg_l)<2||num(p.Clorofila_ug_l)>=50||(p.Algas_BGA||"").toUpperCase()==="ALTO").length>0?`
+  <h3>Puntos críticos — Diques en alerta sanitaria</h3>
+  <table>
+    <thead>${tr(["Dique","Departamento","OD (mg/L)","Clorofila (µg/L)","Algas BGA","Estado"],true)}</thead>
+    <tbody>
+      ${base.filter(p=>num(p.OD_mg_l)<2||num(p.Clorofila_ug_l)>=50||(p.Algas_BGA||"").toUpperCase()==="ALTO")
+        .map(p=>tr([
+          p.PUNTO_DE_MUESTREO||"-", p.Departamento||"-",
+          num(p.OD_mg_l).toFixed(1), num(p.Clorofila_ug_l).toFixed(1),
+          p.Algas_BGA||"-", '<span class="supera">⛔ ALERTA</span>'
+        ])).join("")}
+    </tbody>
+  </table>`:""}
+
+  <h2>OBSERVACIONES AUTOMÁTICAS</h2>
+  <ul style="padding-left:16px;line-height:1.8">
+    <li>El Oxígeno Disuelto es fundamental para la respiración de los organismos acuáticos; valores menores a 2 mg/L generan hipoxia y mortalidad de peces.</li>
+    <li>La Clorofila-a indica el estado trófico del cuerpo de agua; valores superiores a 50 µg/L sugieren floración algal activa.</li>
+    <li>Las cianobacterias (BGA) en niveles altos pueden generar toxinas y fluctuaciones extremas de oxígeno disuelto.</li>
+    <li>Se recomienda monitoreo continuo en los diques que presenten alertas, especialmente en época estival.</li>
+  </ul>
+
+  <div class="caa-box">
+    <h2>LÍMITES DE REFERENCIA — CALIDAD DE AGUA EN RESERVAS</h2>
+    <table>
+      <thead>${tr(["Parámetro","Límite / Rango","Significado"],true)}</thead>
+      <tbody>
+        ${tr(["OD mínimo saludable", "≥ 5–6 mg/L", "Por debajo genera estrés y mortalidad en especies sensibles"])}
+        ${tr(["OD crítico (Hipoxia)", "&lt; 2 mg/L", "Provoca muerte de peces y libera nutrientes tóxicos del sedimento"])}
+        ${tr(["Saturación O₂ excelente", "80% – 120%", "Rango óptimo para vida acuática"])}
+        ${tr(["Clorofila-a Oligotrófico", "&lt; 2–3 µg/L", "Agua clara y sana"])}
+        ${tr(["Clorofila-a Mesotrófico", "3 – 10 µg/L", "Equilibrio moderado"])}
+        ${tr(["Clorofila-a Eutrófico", "10 – 50 µg/L", "Exceso de nutrientes"])}
+        ${tr(["Clorofila-a Alerta/Floración", "&gt; 50 µg/L", "Floración algal activa"])}
+        ${tr(["BGA niveles bajos", "&lt; 10 µg/L", "Baja probabilidad de toxicidad"])}
+        ${tr(["Arsénico (As) — CAA", "0.010 mg/L", "Límite máximo Código Alimentario Argentino"])}
+        ${tr(["TDS — CAA", "1500 mg/L", "Límite máximo Código Alimentario Argentino"])}
+      </tbody>
+    </table>
+    <p class="nota">Fuentes: LG Sonic — Calidad del agua en lagos. AquaBook — Subsecretaría de Recursos Hídricos. DataStream — Dissolved Oxygen Guidebook. Código Alimentario Argentino, Arts. 982–983.</p>
+  </div>
+
+  <div class="footer">
+    Sistema WATERGIS — Plataforma Hidroquímica · Provincia de Catamarca · WGS 84 / EPSG:4326<br>
+    Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
+  </div>
+</div>
+<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
+</body></html>`;
+
+    } else {
+      // ── INDICADORES RED ──
+      const avgTurb  = avg(base, p=>num(p.Turb_NTU));
+      const avgCloro = avg(base, p=>num(p.Cloro_libre_mg_l));
+      const avgTDS   = avg(base, p=>num(p.TDS_mg_l));
+      const avgAs    = avg(base, p=>num(p.As_mg_l));
+      const avgPh    = avg(base, p=>num(p.Ph));
+
+      const turbOk    = base.filter(p=>num(p.Turb_NTU)<=3).length;
+      const turbAlta  = base.filter(p=>num(p.Turb_NTU)>3).length;
+
+      const cloroBajo = base.filter(p=>num(p.Cloro_libre_mg_l)<0.20).length;
+      const cloroOk    = base.filter(p=>{const v=num(p.Cloro_libre_mg_l);return v>=0.20&&v<=2.00;}).length;
+      const cloroAlto  = base.filter(p=>num(p.Cloro_libre_mg_l)>2.00).length;
+
+      const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
+
+      const localidadesUnicas = [...new Set(base.map(p=>p.Localidad))];
+
+      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Red — ${nombreBase2}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; background: white; }
+  .page { padding: 18mm 16mm; }
+  h1 { font-size: 22px; color: #0e7490; margin-bottom: 2px; }
+  h2 { font-size: 13px; color: #0e7490; border-left: 4px solid #06b6d4; padding-left: 8px; margin: 16px 0 8px; }
+  h3 { font-size: 11px; color: #475569; margin: 12px 0 6px; }
+  .subtitle { font-size: 12px; color: #334155; margin-bottom: 2px; }
+  .header-box { background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
+  th { background: #7e22ce; color: white; padding: 6px 8px; text-align: left; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .bar-label { width: 180px; flex-shrink: 0; font-size: 10px; }
+  .bar-wrap { flex: 1; background: #e2e8f0; border-radius: 4px; height: 12px; }
+  .bar-fill { height: 12px; border-radius: 4px; }
+  .bar-val { width: 90px; text-align: right; font-size: 10px; font-weight: bold; }
+  .caa-box { background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 12px 16px; margin-top: 16px; }
+  .caa-box h2 { color: #7e22ce; border-left-color: #a855f7; }
+  .nota { font-size: 9px; color: #64748b; font-style: italic; margin-top: 8px; line-height: 1.5; }
+  .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; text-align: center; }
+  .supera { color: #dc2626; font-weight: bold; }
+  .ok { color: #16a34a; font-weight: bold; }
+  .alerta { color: #d97706; font-weight: bold; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { margin: 15mm; size: A4; } }
+</style></head><body><div class="page">
+
+  <div class="header-box">
+    <div class="header-top">
+      <div>
+        <h1>💧 WATERGIS</h1>
+        <div class="subtitle">INFORME DE RED DE DISTRIBUCIÓN</div>
+        <div class="subtitle"><strong>${titulo2}</strong></div>
+      </div>
+      <div style="text-align:right;font-size:10px;color:#64748b">
+        <div>Usuario: Nicolás Doria</div>
+        <div>Fecha: ${fecha}</div>
+        <div>Localidades: ${localidadesUnicas.length} (${base.length} campañas)</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>INDICADORES PRINCIPALES — RED</h2>
+  <table>
+    <thead>${tr(["Parámetro","Promedio","Límite normativo","Estado"],true)}</thead>
+    <tbody>
+      ${tr(["Turbidez", avgTurb.toFixed(1)+" NTU", "&lt; 3 NTU", `<span class="${avgTurb>3?"supera":"ok"}">${avgTurb>3?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Cloro libre residual", avgCloro.toFixed(2)+" mg/L", "0.20 – 2.00 mg/L", `<span class="${avgCloro<0.2?"alerta":avgCloro>2?"supera":"ok"}">${avgCloro<0.2?"⚠️ Bajo":avgCloro>2?"⛔ Alto":"✅ Normal"}</span>`])}
+      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "&lt; 1500 mg/L", `<span class="${avgTDS>1500?"supera":"ok"}">${avgTDS>1500?"⛔ Supera CAA":"✅ Normal"}</span>`])}
+      ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "&lt; 0.01 mg/L", `<span class="${avgAs>0.01?"supera":"ok"}">${avgAs>0.01?"⛔ Supera CAA":"✅ Normal"}</span>`])}
+      ${tr(["pH", avgPh.toFixed(1), "6.5 – 8.5", `<span class="${avgPh<6.5||avgPh>8.5?"alerta":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
+    </tbody>
+  </table>
+
+  <h2>DISTRIBUCIÓN — TURBIDEZ</h2>
+  <div class="bar-row"><div class="bar-label">Dentro de norma (≤ 3 NTU)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(turbOk)}%"></div></div><div class="bar-val" style="color:#22c55e">${turbOk} (${pct(turbOk)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Fuera de norma (&gt; 3 NTU)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(turbAlta)}%"></div></div><div class="bar-val" style="color:#ef4444">${turbAlta} (${pct(turbAlta)}%)</div></div>
+
+  <h2>DISTRIBUCIÓN — CLORO LIBRE RESIDUAL</h2>
+  <div class="bar-row"><div class="bar-label">Bajo (&lt; 0.20 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(cloroBajo)}%"></div></div><div class="bar-val" style="color:#f59e0b">${cloroBajo} (${pct(cloroBajo)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Normal (0.20–2.00 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(cloroOk)}%"></div></div><div class="bar-val" style="color:#22c55e">${cloroOk} (${pct(cloroOk)}%)</div></div>
+  <div class="bar-row"><div class="bar-label">Alto (&gt; 2.00 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cloroAlto)}%"></div></div><div class="bar-val" style="color:#ef4444">${cloroAlto} (${pct(cloroAlto)}%)</div></div>
+
+  ${base.filter(p=>num(p.Turb_NTU)>3||num(p.Cloro_libre_mg_l)<0.20||num(p.Cloro_libre_mg_l)>2.00).length>0?`
+  <h3>Puntos críticos — Red fuera de norma</h3>
+  <table>
+    <thead>${tr(["Localidad","Departamento","Punto de muestreo","Turbidez (NTU)","Cloro libre (mg/L)","Estado"],true)}</thead>
+    <tbody>
+      ${base.filter(p=>num(p.Turb_NTU)>3||num(p.Cloro_libre_mg_l)<0.20||num(p.Cloro_libre_mg_l)>2.00)
+        .map(p=>tr([
+          p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-",
+          num(p.Turb_NTU).toFixed(1), num(p.Cloro_libre_mg_l).toFixed(2),
+          '<span class="supera">⛔ Fuera de norma</span>'
+        ])).join("")}
+    </tbody>
+  </table>`:""}
+
+  <h2>OBSERVACIONES AUTOMÁTICAS</h2>
+  <ul style="padding-left:16px;line-height:1.8">
+    <li>La turbidez elevada puede indicar presencia de sedimentos, materia orgánica o falla en el proceso de filtración.</li>
+    <li>El cloro libre residual es indicador de desinfección efectiva; valores bajos implican riesgo de recontaminación bacteriológica.</li>
+    <li>Niveles de cloro superiores a 2.00 mg/L pueden generar sabor y olor desagradables sin riesgo sanitario directo.</li>
+    <li>Se recomienda monitoreo diario en los puntos de red que presenten desvíos respecto a los valores normativos.</li>
+  </ul>
+
+  <div class="caa-box">
+    <h2>LÍMITES DE REFERENCIA — RED DE DISTRIBUCIÓN</h2>
+    <table>
+      <thead>${tr(["Parámetro","Límite / Rango","Norma de referencia"],true)}</thead>
+      <tbody>
+        ${tr(["Turbidez", "&lt; 3 NTU", "Norma de potabilidad"])}
+        ${tr(["Cloro libre residual", "0.20 – 2.00 mg/L", "Norma de desinfección"])}
+        ${tr(["Arsénico (As) — CAA", "0.010 mg/L", "Código Alimentario Argentino Art. 982"])}
+        ${tr(["TDS — CAA", "1500 mg/L", "Código Alimentario Argentino"])}
+        ${tr(["Nitratos (NO3) — CAA", "45.0 mg/L", "Código Alimentario Argentino Art. 983"])}
+      </tbody>
+    </table>
+    <p class="nota">Fuentes: Código Alimentario Argentino, Arts. 982–983. Normas de potabilidad y desinfección de agua de red.</p>
+  </div>
+
+  <div class="footer">
+    Sistema WATERGIS — Plataforma Hidroquímica · Provincia de Catamarca · WGS 84 / EPSG:4326<br>
+    Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
+  </div>
+</div>
+<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
+</body></html>`;
+    }
+
+    const ventana = window.open("","_blank","width=900,height=700");
+    if(ventana){
+      ventana.document.write(html);
+      ventana.document.close();
+    }
+    setPdfLoading(false);
+  };
+
 
   // ======================================================
   // RENDER
@@ -1419,7 +1756,6 @@ export default function Map() {
                   <tbody>
                     {[
                       { dpto:"Antofagasta de la Sierra", temp:10 },
-                      { dpto:"Bolsón",                   temp:14 },
                       { dpto:"Belén",                    temp:17 },
                       { dpto:"Tinogasta",                temp:17 },
                       { dpto:"Ambato",                   temp:17 },
@@ -1427,6 +1763,7 @@ export default function Map() {
                       { dpto:"El Alto",                  temp:18 },
                       { dpto:"Andalgalá",                temp:18 },
                       { dpto:"Ancasti",                  temp:19 },
+                      { dpto:"Paclín",                   temp:19 },
                       { dpto:"Fray M. Esquiú",           temp:20 },
                       { dpto:"Capayán",                  temp:20 },
                       { dpto:"Pomán",                    temp:20 },
@@ -1730,7 +2067,43 @@ export default function Map() {
             )}
           </div>
 
-          {/* Departamento */}
+          {/* Tipo de punto */}
+          <div className="mb-3">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
+              Tipo de punto
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                {key:"TODOS", label:"Todos",  color:"border-slate-700 text-slate-400"},
+                {key:"POZO",  label:"Pozos",  color:"border-cyan-500 text-cyan-300"},
+                {key:"DIQUE", label:"Diques", color:"border-blue-500 text-blue-300"},
+                {key:"RED",   label:"Red",    color:"border-purple-500 text-purple-300"},
+              ] as {key:string;label:string;color:string}[]).map(opt=>(
+                <button
+                  key={opt.key}
+                  onClick={()=>setTipoPunto(opt.key as any)}
+                  className={`rounded-lg border p-1.5 text-[10px] font-semibold transition-all ${
+                    tipoPunto===opt.key ? opt.color+" bg-slate-800" : "border-slate-800 bg-slate-950 text-slate-600 hover:border-slate-600"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {/* Botón generar informe específico de Diques o Red */}
+            {(tipoPunto==="DIQUE"||tipoPunto==="RED") && esAutenticado && (
+              <button
+                onClick={()=>{ setInfTipoPunto(tipoPunto); generarPDFEspecial(tipoPunto as "DIQUE"|"RED"); }}
+                className={`mt-2 w-full rounded-lg border py-2 text-xs font-bold transition-all ${
+                  tipoPunto==="DIQUE"
+                    ? "border-blue-500 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"
+                    : "border-purple-500 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
+                }`}
+              >
+                📄 Generar informe de {tipoPunto==="DIQUE"?"Diques":"Red"}
+              </button>
+            )}
+          </div>
           <div className="mb-2">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
               {t.departamentos}
@@ -1914,31 +2287,52 @@ export default function Map() {
                   </div>
                   {esAutenticado ? (
                     <>
-                      {/* CARDS clicables */}
+                      {/* CARDS clicables — dinámicas según tipo de punto */}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginBottom:"10px"}}>
-                        {([
-                          {key:"As",   label:"As",    val:point.As_mg_l,    color:"#22d3ee"},
-                          {key:"TDS",  label:"TDS",   val:point.TDS_mg_l,   color:"#f59e0b"},
-                          {key:"Ph",   label:"pH",    val:point.Ph,         color:"#a78bfa"},
-                          {key:"Fluor",label:"Flúor", val:point.Fluor_mg_l, color:"#34d399"},
-                          {key:"NO3",  label:"NO3",   val:point.NO3_mg_l,   color:"#f87171"},
-                        ] as {key:string;label:string;val:string;color:string}[]).map(card=>(
-                          <div
-                            key={card.key}
-                            onClick={()=>setPopupVar(prev=>({...prev,[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]:card.key}))}
-                            style={{
-                              background: (popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
-                                ? "rgba(6,182,212,0.15)" : "#0f172a",
-                              border: `1px solid ${(popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
-                                ? card.color : "rgba(255,255,255,0.08)"}`,
-                              borderRadius:"10px", padding:"8px", cursor:"pointer",
-                              transition:"all 0.15s",
-                            }}
-                          >
-                            <div style={{fontSize:"10px",opacity:0.7,marginBottom:"2px"}}>{card.label}</div>
-                            <div style={{fontSize:"16px",fontWeight:700,color:card.color}}>{card.val}</div>
-                          </div>
-                        ))}
+                        {(() => {
+                          const baseCards = [
+                            {key:"As",   label:"As",    val:point.As_mg_l,    color:"#22d3ee"},
+                            {key:"TDS",  label:"TDS",   val:point.TDS_mg_l,   color:"#f59e0b"},
+                            {key:"Ph",   label:"pH",    val:point.Ph,         color:"#a78bfa"},
+                          ];
+                          const diqueCards = [
+                            {key:"OD",       label:"OD (mg/L)",  val:point.OD_mg_l||"-",       color:"#22c55e"},
+                            {key:"SatO2",    label:"Sat. O₂ %",  val:point.Sat_O2_pct||"-",    color:"#34d399"},
+                            {key:"Clorofila",label:"Clorofila",  val:point.Clorofila_ug_l||"-",color:"#f59e0b"},
+                            {key:"BGA",      label:"Algas BGA",  val:point.Algas_BGA||"-",     color:"#ef4444"},
+                          ];
+                          const redCards = [
+                            {key:"Turb", label:"Turbidez (NTU)", val:point.Turb_NTU||"-",         color:"#c084fc"},
+                            {key:"Cloro",label:"Cloro libre",    val:point.Cloro_libre_mg_l||"-", color:"#34d399"},
+                          ];
+                          const pozoCards = [
+                            {key:"Fluor",label:"Flúor", val:point.Fluor_mg_l, color:"#34d399"},
+                            {key:"NO3",  label:"NO3",   val:point.NO3_mg_l,   color:"#f87171"},
+                          ];
+                          const cards = point.Tipo_Punto==="DIQUE"
+                            ? [...baseCards, ...diqueCards]
+                            : point.Tipo_Punto==="RED"
+                            ? [...baseCards, ...redCards]
+                            : [...baseCards, ...pozoCards];
+
+                          return cards.map(card=>(
+                            <div
+                              key={card.key}
+                              onClick={()=>setPopupVar(prev=>({...prev,[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]:card.key}))}
+                              style={{
+                                background: (popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
+                                  ? "rgba(6,182,212,0.15)" : "#0f172a",
+                                border: `1px solid ${(popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
+                                  ? card.color : "rgba(255,255,255,0.08)"}`,
+                                borderRadius:"10px", padding:"8px", cursor:"pointer",
+                                transition:"all 0.15s",
+                              }}
+                            >
+                              <div style={{fontSize:"10px",opacity:0.7,marginBottom:"2px"}}>{card.label}</div>
+                              <div style={{fontSize:"16px",fontWeight:700,color:card.color}}>{card.val}</div>
+                            </div>
+                          ));
+                        })()}
                       </div>
                       {/* GRÁFICO del parámetro seleccionado */}
                       <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"4px",textAlign:"center"}}>
