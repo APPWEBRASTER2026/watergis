@@ -1162,6 +1162,8 @@ export default function Map() {
       }).join("")}
     </tbody>
   </table>`:""}
+
+  ${histData.length>0?`
   <h2>EVOLUCIÓN HISTÓRICA DEL ARSÉNICO</h2>
   <table>
     <thead>${tr(["Año","As promedio (mg/L)"],true)}</thead>
