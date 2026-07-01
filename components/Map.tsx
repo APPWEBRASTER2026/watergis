@@ -912,6 +912,14 @@ export default function Map() {
     const puntosAltosTDS = base.filter(p=>parseFloat(String(p.TDS_mg_l||"0").replace(",","."))>LIM_TDS)
       .sort((a,b)=>parseFloat(String(b.TDS_mg_l||"0").replace(",","."))-parseFloat(String(a.TDS_mg_l||"0").replace(",","."))).slice(0,15);
 
+    // Flúor — el límite depende de la temperatura media anual del departamento (fluorInfo ya calculado arriba)
+    const fluorBajoCnt   = base.filter(p=>parseAs(p.Fluor_mg_l)<fluorInfo.limInf).length;
+    const fluorNormalCnt = base.filter(p=>{const v=parseAs(p.Fluor_mg_l);return v>=fluorInfo.limInf&&v<=fluorInfo.limSup;}).length;
+    const fluorAltoCnt   = base.filter(p=>parseAs(p.Fluor_mg_l)>fluorInfo.limSup).length;
+    const pctFluor = (n:number)=>base.length>0?((n/base.length)*100).toFixed(1):"0";
+    const puntosAltosFluor = base.filter(p=>parseAs(p.Fluor_mg_l)>fluorInfo.limSup)
+      .sort((a,b)=>parseAs(b.Fluor_mg_l)-parseAs(a.Fluor_mg_l)).slice(0,15);
+
     const conclusion = soloLoc
       ? `La localidad de ${infLoc} presenta una calidad de agua generalmente estable. Se identifican concentraciones elevadas de arsénico en determinados sectores, por lo que se recomienda continuar con el monitoreo periódico y mantener controles preventivos sobre las fuentes de abastecimiento.`
       : soloDepto
@@ -1114,7 +1122,46 @@ export default function Map() {
     </tbody>
   </table>`:""}
 
-  ${histData.length>0?`
+  <!-- RIESGO FLÚOR — límite según temperatura media anual del departamento (CAA Art. 982) -->
+  <h2>DISTRIBUCIÓN DE RIESGO — FLÚOR (límite ${fluorInfo.limInf}–${fluorInfo.limSup} mg/L según T° media: ${tempAnual}°C)</h2>
+  <div class="bar-row">
+    <div class="bar-label">Bajo (&lt; ${fluorInfo.limInf} mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#38bdf8;width:${pctFluor(fluorBajoCnt)}%"></div></div>
+    <div class="bar-val" style="color:#38bdf8">${fluorBajoCnt} (${pctFluor(fluorBajoCnt)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Normal (${fluorInfo.limInf}–${fluorInfo.limSup} mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pctFluor(fluorNormalCnt)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${fluorNormalCnt} (${pctFluor(fluorNormalCnt)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Alto (&gt; ${fluorInfo.limSup} mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pctFluor(fluorAltoCnt)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${fluorAltoCnt} (${pctFluor(fluorAltoCnt)}%)</div>
+  </div>
+
+  ${puntosAltosFluor.length>0?`
+  <h3>Puntos críticos — Flúor superior al límite CAA (&gt; ${fluorInfo.limSup} mg/L)</h3>
+  <table>
+    <thead>${tr(["Localidad","Departamento","Punto de muestreo","Fuente","Flúor (mg/L)","Estado"],true)}</thead>
+    <tbody>
+      ${puntosAltosFluor.map(p=>tr([
+        p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-", p.Fuente||"-",
+        parseAs(p.Fluor_mg_l).toFixed(2),
+        '<span class="supera">⛔ Supera CAA</span>'
+      ])).join("")}
+    </tbody>
+  </table>
+  <h3>Riesgo alto de Flúor por tipo de fuente</h3>
+  <table>
+    <thead>${tr(["Tipo de fuente","Puntos que superan CAA","% del total que supera"],true)}</thead>
+    <tbody>
+      ${[["Subterránea","SUBTERRANEA"],["Superficial","SUPERFICIAL"],["Mezcla","MEZCLA"]].map(([label,key])=>{
+        const n=base.filter(p=>parseAs(p.Fluor_mg_l)>fluorInfo.limSup&&p.Fuente===key).length;
+        return tr([label, `${n} puntos`, fluorAltoCnt>0?((n/fluorAltoCnt)*100).toFixed(1)+"%":"0%"]);
+      }).join("")}
+    </tbody>
+  </table>`:""}
   <h2>EVOLUCIÓN HISTÓRICA DEL ARSÉNICO</h2>
   <table>
     <thead>${tr(["Año","As promedio (mg/L)"],true)}</thead>
