@@ -514,6 +514,11 @@ export default function Map() {
   // Filtro tipo de punto
   const [tipoPunto, setTipoPunto] = useState<"TODOS"|"POZO"|"DIQUE"|"RED">("TODOS");
   const [infTipoPunto, setInfTipoPunto] = useState<"DIQUE"|"RED"|null>(null);
+  const [diqueSeleccionado, setDiqueSeleccionado] = useState("TODOS");
+
+  const diquesUnicosLista = useMemo(()=>
+    [...new Set(points.filter(p=>(p.Tipo_Punto||"").toUpperCase()==="DIQUE").map(p=>p.PUNTO_DE_MUESTREO))].filter(Boolean).sort()
+  ,[points]);
 
   // Filtro sidebar
   const [selectedFiltDept, setSelectedFiltDept] = useState("TODOS");
@@ -1156,24 +1161,32 @@ export default function Map() {
   const generarPDFEspecial = (tipo: "DIQUE"|"RED") => {
     setPdfLoading(true);
 
-    const base = points.filter(p => {
+    const base: Punto[] = points.filter(p => {
       const lat = parseFloat(p.Latitud?.toString().replace(",","."));
       const lng = parseFloat(p.Longitud?.toString().replace(",","."));
       if(isNaN(lat)||isNaN(lng)) return false;
       if((p.Tipo_Punto||"").toUpperCase()!==tipo) return false;
       const dOk = infDept==="TODOS" || p.Departamento===infDept;
       const lOk = infLoc==="TODAS"  || p.Localidad===infLoc;
-      return dOk && lOk;
+      const diqueOk = tipo!=="DIQUE" || diqueSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===diqueSeleccionado;
+      return dOk && lOk && diqueOk;
     });
 
     const fecha = new Date().toLocaleDateString("es-AR");
-    const soloDepto = infDept!=="TODOS" && infLoc==="TODAS";
-    const soloLoc   = infLoc!=="TODAS";
-    const titulo2 = soloLoc
-      ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:base[0]?.Departamento||"").toUpperCase()}`
-      : soloDepto ? `DEPARTAMENTO ${infDept.toUpperCase()}`
-      : `PROVINCIA DE CATAMARCA — TODOS ${tipo==="DIQUE"?"LOS DIQUES":"LOS PUNTOS DE RED"}`;
-    const nombreBase2 = soloLoc ? infLoc : soloDepto ? `Departamento_${infDept}` : "General";
+    const soloDeptoR  = infDept!=="TODOS" && infLoc==="TODAS";
+    const soloLocR    = infLoc!=="TODAS";
+    const soloUnDique = tipo==="DIQUE" && diqueSeleccionado!=="TODOS";
+
+    const titulo2 = tipo==="DIQUE"
+      ? (soloUnDique ? `${diqueSeleccionado.toUpperCase()} · ${base[0]?.Departamento?.toUpperCase()||""}` : `PROVINCIA DE CATAMARCA — TODOS LOS DIQUES`)
+      : (soloLocR
+        ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:base[0]?.Departamento||"").toUpperCase()}`
+        : soloDeptoR ? `DEPARTAMENTO ${infDept.toUpperCase()}`
+        : `PROVINCIA DE CATAMARCA — TODOS LOS PUNTOS DE RED`);
+
+    const nombreBase2 = tipo==="DIQUE"
+      ? (soloUnDique ? diqueSeleccionado : "Todos_los_diques")
+      : (soloLocR ? infLoc : soloDeptoR ? `Departamento_${infDept}` : "General");
 
     const num = (v:string|undefined) => parseFloat(String(v||"0").replace(",","."));
     const avg = (arr:Punto[], f:(p:Punto)=>number) => arr.length>0 ? arr.reduce((a,p)=>a+f(p),0)/arr.length : 0;
@@ -1181,34 +1194,8 @@ export default function Map() {
     const tr = (cells: string[], header=false) =>
       `<tr>${cells.map(c=>`<${header?"th":"td"}>${c}</${header?"th":"td"}>`).join("")}</tr>`;
 
-    let html = "";
-
-    if(tipo==="DIQUE"){
-      // ── INDICADORES DIQUES ──
-      const avgOD    = avg(base, p=>num(p.OD_mg_l));
-      const avgSat   = avg(base, p=>num(p.Sat_O2_pct));
-      const avgCloro = avg(base, p=>num(p.Clorofila_ug_l));
-      const avgAs    = avg(base, p=>num(p.As_mg_l));
-      const avgTDS   = avg(base, p=>num(p.TDS_mg_l));
-      const avgPh    = avg(base, p=>num(p.Ph));
-
-      const odCritico   = base.filter(p=>num(p.OD_mg_l)<2).length;
-      const odBajo      = base.filter(p=>{const v=num(p.OD_mg_l);return v>=2&&v<5;}).length;
-      const odNormal    = base.filter(p=>num(p.OD_mg_l)>=5).length;
-
-      const cloroOligo  = base.filter(p=>num(p.Clorofila_ug_l)<3).length;
-      const cloroMeso   = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=3&&v<10;}).length;
-      const cloroEutro  = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=10&&v<50;}).length;
-      const cloroAlerta = base.filter(p=>num(p.Clorofila_ug_l)>=50).length;
-
-      const bgaAlto = base.filter(p=>(p.Algas_BGA||"").toUpperCase()==="ALTO").length;
-
-      const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
-
-      const diquesUnicos = [...new Set(base.map(p=>p.PUNTO_DE_MUESTREO))];
-
-      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Diques — ${nombreBase2}</title>
-<style>
+    // ── CSS compartido — idéntico al informe de pozos ──
+    const sharedStyle = `
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; background: white; }
   .page { padding: 18mm 16mm; }
@@ -1216,12 +1203,16 @@ export default function Map() {
   h2 { font-size: 13px; color: #0e7490; border-left: 4px solid #06b6d4; padding-left: 8px; margin: 16px 0 8px; }
   h3 { font-size: 11px; color: #475569; margin: 12px 0 6px; }
   .subtitle { font-size: 12px; color: #334155; margin-bottom: 2px; }
+  .meta { font-size: 10px; color: #64748b; margin-bottom: 14px; }
   .header-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
   .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
   th { background: #0e7490; color: white; padding: 6px 8px; text-align: left; }
   td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
   tr:nth-child(even) td { background: #f8fafc; }
+  .estado-alerta { color: #dc2626; font-weight: bold; }
+  .estado-precaucion { color: #d97706; font-weight: bold; }
+  .estado-normal { color: #16a34a; font-weight: bold; }
   .bar-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
   .bar-label { width: 180px; flex-shrink: 0; font-size: 10px; }
   .bar-wrap { flex: 1; background: #e2e8f0; border-radius: 4px; height: 12px; }
@@ -1232,10 +1223,45 @@ export default function Map() {
   .nota { font-size: 9px; color: #64748b; font-style: italic; margin-top: 8px; line-height: 1.5; }
   .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; text-align: center; }
   .supera { color: #dc2626; font-weight: bold; }
+  .limite { color: #d97706; font-weight: bold; }
   .ok { color: #16a34a; font-weight: bold; }
-  .alerta { color: #d97706; font-weight: bold; }
-  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { margin: 15mm; size: A4; } }
-</style></head><body><div class="page">
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { margin: 15mm; size: A4; } }`;
+
+    let html = "";
+
+    if(tipo==="DIQUE"){
+      const avgOD    = avg(base, p=>num(p.OD_mg_l));
+      const avgSat   = avg(base, p=>num(p.Sat_O2_pct));
+      const avgCloro = avg(base, p=>num(p.Clorofila_ug_l));
+      const avgBGA   = avg(base, p=>num(p.Algas_BGA));
+      const avgAs    = avg(base, p=>num(p.As_mg_l));
+      const avgFluor = avg(base, p=>num(p.Fluor_mg_l));
+      const avgTDS   = avg(base, p=>num(p.TDS_mg_l));
+      const avgPh    = avg(base, p=>num(p.Ph));
+
+      const odCritico = base.filter(p=>num(p.OD_mg_l)<2).length;
+      const odBajo    = base.filter(p=>{const v=num(p.OD_mg_l);return v>=2&&v<5;}).length;
+      const odNormal  = base.filter(p=>num(p.OD_mg_l)>=5).length;
+
+      const cloroOligo  = base.filter(p=>num(p.Clorofila_ug_l)<3).length;
+      const cloroMeso   = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=3&&v<10;}).length;
+      const cloroEutro  = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=10&&v<50;}).length;
+      const cloroAlerta = base.filter(p=>num(p.Clorofila_ug_l)>=50).length;
+
+      const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
+
+      const estG     = avgOD<2?"ALERTA":avgOD<5||avgCloro>=10?"PRECAUCIÓN":"NORMAL";
+      const estClase = avgOD<2?"alerta":avgOD<5||avgCloro>=10?"precaucion":"normal";
+
+      const puntosCriticos = base.filter(p=>num(p.OD_mg_l)<2||num(p.Clorofila_ug_l)>=50||num(p.Algas_BGA)>=10000)
+        .sort((a,b)=>num(a.OD_mg_l)-num(b.OD_mg_l));
+
+      const diquesUnicos = [...new Set(base.map(p=>p.PUNTO_DE_MUESTREO))];
+
+      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Diques — ${nombreBase2}</title>
+<style>${sharedStyle}</style></head>
+<body>
+<div class="page">
 
   <div class="header-box">
     <div class="header-top">
@@ -1252,41 +1278,78 @@ export default function Map() {
     </div>
   </div>
 
-  <h2>INDICADORES PRINCIPALES — DIQUES</h2>
+  <table>
+    <tbody>
+      ${tr(["Campañas realizadas", String(base.length)])}
+      ${tr(["Diques monitoreados", diquesUnicos.join(", ")||"-"])}
+      ${tr(["Estado general", `<span class="estado-${estClase}">${estG==="ALERTA"?"⛔ "+estG:estG==="PRECAUCIÓN"?"⚠️ "+estG:"✅ "+estG}</span>`])}
+    </tbody>
+  </table>
+
+  <h2>INDICADORES PRINCIPALES</h2>
   <table>
     <thead>${tr(["Parámetro","Promedio","Rango óptimo","Estado"],true)}</thead>
     <tbody>
-      ${tr(["Oxígeno Disuelto (OD)", avgOD.toFixed(1)+" mg/L", "≥ 5–6 mg/L", `<span class="${avgOD<2?"supera":avgOD<5?"alerta":"ok"}">${avgOD<2?"⛔ Hipoxia":avgOD<5?"⚠️ Bajo":"✅ Saludable"}</span>`])}
-      ${tr(["Saturación de O₂", avgSat.toFixed(0)+"%", "80% – 120%", `<span class="${avgSat<80||avgSat>120?"alerta":"ok"}">${avgSat<80?"⚠️ Bajo":avgSat>120?"⚠️ Sobresaturado":"✅ Excelente"}</span>`])}
-      ${tr(["Clorofila-a", avgCloro.toFixed(1)+" µg/L", "&lt; 10 µg/L", `<span class="${avgCloro>=50?"supera":avgCloro>=10?"alerta":"ok"}">${avgCloro>=50?"⛔ Floración":avgCloro>=10?"⚠️ Eutrófico":"✅ Normal"}</span>`])}
-      ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "&lt; 0.01 mg/L", `<span class="${avgAs>0.01?"supera":"ok"}">${avgAs>0.01?"⛔ Supera CAA":"✅ Normal"}</span>`])}
-      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "&lt; 1500 mg/L", `<span class="${avgTDS>1500?"supera":"ok"}">${avgTDS>1500?"⛔ Supera CAA":"✅ Normal"}</span>`])}
-      ${tr(["pH", avgPh.toFixed(1), "6.5 – 8.5", `<span class="${avgPh<6.5||avgPh>8.5?"alerta":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
+      ${tr(["Oxígeno Disuelto (OD)", avgOD.toFixed(1)+" mg/L", "≥ 5–6 mg/L", `<span class="${avgOD<2?"supera":avgOD<5?"limite":"ok"}">${avgOD<2?"⛔ Hipoxia":avgOD<5?"⚠️ Bajo":"✅ Saludable"}</span>`])}
+      ${tr(["Saturación de O₂", avgSat.toFixed(0)+"%", "80% – 120%", `<span class="${avgSat<80||avgSat>120?"limite":"ok"}">${avgSat<80?"⚠️ Bajo":avgSat>120?"⚠️ Sobresaturado":"✅ Excelente"}</span>`])}
+      ${tr(["Clorofila-a", avgCloro.toFixed(1)+" µg/L", "&lt; 10 µg/L", `<span class="${avgCloro>=50?"supera":avgCloro>=10?"limite":"ok"}">${avgCloro>=50?"⛔ Floración":avgCloro>=10?"⚠️ Eutrófico":"✅ Normal"}</span>`])}
+      ${tr(["Algas BGA", avgBGA.toFixed(0)+" cel/mL", "&lt; 10.000 cel/mL", `<span class="${avgBGA>=10000?"supera":"ok"}">${avgBGA>=10000?"⛔ Riesgo":"✅ Bajo riesgo"}</span>`])}
+      ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "0.010 mg/L (CAA)", `<span class="${avgAs>0.01?"supera":avgAs>0.008?"limite":"ok"}">${avgAs>0.01?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Flúor", avgFluor.toFixed(2)+" mg/L", "0.7 – 1.2 mg/L*", `<span class="${avgFluor>1.2?"supera":avgFluor<0.7?"limite":"ok"}">${avgFluor>1.2?"⛔ Supera":avgFluor<0.7?"⚠️ Bajo límite":"✅ Normal"}</span>`])}
+      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "1500 mg/L (CAA)", `<span class="${avgTDS>1500?"supera":avgTDS>1200?"limite":"ok"}">${avgTDS>1500?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["pH", avgPh.toFixed(1), "6.5 – 8.5", `<span class="${avgPh<6.5||avgPh>8.5?"supera":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
     </tbody>
   </table>
 
   <h2>DISTRIBUCIÓN — OXÍGENO DISUELTO (OD)</h2>
-  <div class="bar-row"><div class="bar-label">Hipóxico (&lt; 2 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(odCritico)}%"></div></div><div class="bar-val" style="color:#ef4444">${odCritico} (${pct(odCritico)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Bajo (2–5 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(odBajo)}%"></div></div><div class="bar-val" style="color:#f59e0b">${odBajo} (${pct(odBajo)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Saludable (≥ 5 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(odNormal)}%"></div></div><div class="bar-val" style="color:#22c55e">${odNormal} (${pct(odNormal)}%)</div></div>
+  <div class="bar-row">
+    <div class="bar-label">Hipóxico (&lt; 2 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(odCritico)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${odCritico} (${pct(odCritico)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Bajo (2–5 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(odBajo)}%"></div></div>
+    <div class="bar-val" style="color:#f59e0b">${odBajo} (${pct(odBajo)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Saludable (≥ 5 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(odNormal)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${odNormal} (${pct(odNormal)}%)</div>
+  </div>
 
   <h2>ESTADO TRÓFICO — CLOROFILA-A</h2>
-  <div class="bar-row"><div class="bar-label">Oligotrófico (&lt; 3 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(cloroOligo)}%"></div></div><div class="bar-val" style="color:#22c55e">${cloroOligo} (${pct(cloroOligo)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Mesotrófico (3–10 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#84cc16;width:${pct(cloroMeso)}%"></div></div><div class="bar-val" style="color:#84cc16">${cloroMeso} (${pct(cloroMeso)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Eutrófico (10–50 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(cloroEutro)}%"></div></div><div class="bar-val" style="color:#f59e0b">${cloroEutro} (${pct(cloroEutro)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Floración (&gt; 50 µg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cloroAlerta)}%"></div></div><div class="bar-val" style="color:#ef4444">${cloroAlerta} (${pct(cloroAlerta)}%)</div></div>
+  <div class="bar-row">
+    <div class="bar-label">Oligotrófico (&lt; 3 µg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(cloroOligo)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${cloroOligo} (${pct(cloroOligo)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Mesotrófico (3–10 µg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#84cc16;width:${pct(cloroMeso)}%"></div></div>
+    <div class="bar-val" style="color:#84cc16">${cloroMeso} (${pct(cloroMeso)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Eutrófico (10–50 µg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(cloroEutro)}%"></div></div>
+    <div class="bar-val" style="color:#f59e0b">${cloroEutro} (${pct(cloroEutro)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Floración (&gt; 50 µg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cloroAlerta)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${cloroAlerta} (${pct(cloroAlerta)}%)</div>
+  </div>
 
-  ${base.filter(p=>num(p.OD_mg_l)<2||num(p.Clorofila_ug_l)>=50||(p.Algas_BGA||"").toUpperCase()==="ALTO").length>0?`
+  ${puntosCriticos.length>0?`
   <h3>Puntos críticos — Diques en alerta sanitaria</h3>
   <table>
-    <thead>${tr(["Dique","Departamento","OD (mg/L)","Clorofila (µg/L)","Algas BGA","Estado"],true)}</thead>
+    <thead>${tr(["Dique","Departamento","OD (mg/L)","Clorofila (µg/L)","Algas BGA (cel/mL)","Estado"],true)}</thead>
     <tbody>
-      ${base.filter(p=>num(p.OD_mg_l)<2||num(p.Clorofila_ug_l)>=50||(p.Algas_BGA||"").toUpperCase()==="ALTO")
-        .map(p=>tr([
-          p.PUNTO_DE_MUESTREO||"-", p.Departamento||"-",
-          num(p.OD_mg_l).toFixed(1), num(p.Clorofila_ug_l).toFixed(1),
-          p.Algas_BGA||"-", '<span class="supera">⛔ ALERTA</span>'
-        ])).join("")}
+      ${puntosCriticos.map(p=>tr([
+        p.PUNTO_DE_MUESTREO||"-", p.Departamento||"-",
+        num(p.OD_mg_l).toFixed(1), num(p.Clorofila_ug_l).toFixed(1), num(p.Algas_BGA).toFixed(0),
+        '<span class="supera">⛔ ALERTA</span>'
+      ])).join("")}
     </tbody>
   </table>`:""}
 
@@ -1294,7 +1357,7 @@ export default function Map() {
   <ul style="padding-left:16px;line-height:1.8">
     <li>El Oxígeno Disuelto es fundamental para la respiración de los organismos acuáticos; valores menores a 2 mg/L generan hipoxia y mortalidad de peces.</li>
     <li>La Clorofila-a indica el estado trófico del cuerpo de agua; valores superiores a 50 µg/L sugieren floración algal activa.</li>
-    <li>Las cianobacterias (BGA) en niveles altos pueden generar toxinas y fluctuaciones extremas de oxígeno disuelto.</li>
+    <li>Las cianobacterias (BGA) en niveles altos (&gt; 10.000 cel/mL) pueden generar toxinas y fluctuaciones extremas de oxígeno disuelto.</li>
     <li>Se recomienda monitoreo continuo en los diques que presenten alertas, especialmente en época estival.</li>
   </ul>
 
@@ -1307,10 +1370,9 @@ export default function Map() {
         ${tr(["OD crítico (Hipoxia)", "&lt; 2 mg/L", "Provoca muerte de peces y libera nutrientes tóxicos del sedimento"])}
         ${tr(["Saturación O₂ excelente", "80% – 120%", "Rango óptimo para vida acuática"])}
         ${tr(["Clorofila-a Oligotrófico", "&lt; 2–3 µg/L", "Agua clara y sana"])}
-        ${tr(["Clorofila-a Mesotrófico", "3 – 10 µg/L", "Equilibrio moderado"])}
         ${tr(["Clorofila-a Eutrófico", "10 – 50 µg/L", "Exceso de nutrientes"])}
         ${tr(["Clorofila-a Alerta/Floración", "&gt; 50 µg/L", "Floración algal activa"])}
-        ${tr(["BGA niveles bajos", "&lt; 10 µg/L", "Baja probabilidad de toxicidad"])}
+        ${tr(["BGA niveles bajos", "&lt; 10.000 cel/mL", "Baja probabilidad de toxicidad"])}
         ${tr(["Arsénico (As) — CAA", "0.010 mg/L", "Límite máximo Código Alimentario Argentino"])}
         ${tr(["TDS — CAA", "1500 mg/L", "Límite máximo Código Alimentario Argentino"])}
       </tbody>
@@ -1319,7 +1381,7 @@ export default function Map() {
   </div>
 
   <div class="footer">
-    Sistema WATERGIS — Plataforma Hidroquímica · Provincia de Catamarca · WGS 84 / EPSG:4326<br>
+    Sistema WATERGIS — Provincia de Catamarca · WGS 84 / EPSG:4326<br>
     Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
   </div>
 </div>
@@ -1327,53 +1389,35 @@ export default function Map() {
 </body></html>`;
 
     } else {
-      // ── INDICADORES RED ──
       const avgTurb  = avg(base, p=>num(p.Turb_NTU));
       const avgCloro = avg(base, p=>num(p.Cloro_libre_mg_l));
       const avgTDS   = avg(base, p=>num(p.TDS_mg_l));
       const avgAs    = avg(base, p=>num(p.As_mg_l));
+      const avgFluor = avg(base, p=>num(p.Fluor_mg_l));
+      const avgNO3   = avg(base, p=>num(p.NO3_mg_l));
       const avgPh    = avg(base, p=>num(p.Ph));
 
-      const turbOk    = base.filter(p=>num(p.Turb_NTU)<=3).length;
-      const turbAlta  = base.filter(p=>num(p.Turb_NTU)>3).length;
+      const turbOk   = base.filter(p=>num(p.Turb_NTU)<=3).length;
+      const turbAlta = base.filter(p=>num(p.Turb_NTU)>3).length;
 
       const cloroBajo = base.filter(p=>num(p.Cloro_libre_mg_l)<0.20).length;
-      const cloroOk    = base.filter(p=>{const v=num(p.Cloro_libre_mg_l);return v>=0.20&&v<=2.00;}).length;
-      const cloroAlto  = base.filter(p=>num(p.Cloro_libre_mg_l)>2.00).length;
+      const cloroOk   = base.filter(p=>{const v=num(p.Cloro_libre_mg_l);return v>=0.20&&v<=2.00;}).length;
+      const cloroAlto = base.filter(p=>num(p.Cloro_libre_mg_l)>2.00).length;
 
       const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
+
+      const estG     = avgTurb>3||avgAs>0.01||avgTDS>1500?"PRECAUCIÓN":"NORMAL";
+      const estClase = estG==="PRECAUCIÓN"?"precaucion":"normal";
+
+      const puntosCriticos = base.filter(p=>num(p.Turb_NTU)>3||num(p.Cloro_libre_mg_l)<0.20||num(p.Cloro_libre_mg_l)>2.00)
+        .sort((a,b)=>num(b.Turb_NTU)-num(a.Turb_NTU));
 
       const localidadesUnicas = [...new Set(base.map(p=>p.Localidad))];
 
       html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Red — ${nombreBase2}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; background: white; }
-  .page { padding: 18mm 16mm; }
-  h1 { font-size: 22px; color: #0e7490; margin-bottom: 2px; }
-  h2 { font-size: 13px; color: #0e7490; border-left: 4px solid #06b6d4; padding-left: 8px; margin: 16px 0 8px; }
-  h3 { font-size: 11px; color: #475569; margin: 12px 0 6px; }
-  .subtitle { font-size: 12px; color: #334155; margin-bottom: 2px; }
-  .header-box { background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
-  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
-  th { background: #7e22ce; color: white; padding: 6px 8px; text-align: left; }
-  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
-  tr:nth-child(even) td { background: #f8fafc; }
-  .bar-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
-  .bar-label { width: 180px; flex-shrink: 0; font-size: 10px; }
-  .bar-wrap { flex: 1; background: #e2e8f0; border-radius: 4px; height: 12px; }
-  .bar-fill { height: 12px; border-radius: 4px; }
-  .bar-val { width: 90px; text-align: right; font-size: 10px; font-weight: bold; }
-  .caa-box { background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 12px 16px; margin-top: 16px; }
-  .caa-box h2 { color: #7e22ce; border-left-color: #a855f7; }
-  .nota { font-size: 9px; color: #64748b; font-style: italic; margin-top: 8px; line-height: 1.5; }
-  .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; text-align: center; }
-  .supera { color: #dc2626; font-weight: bold; }
-  .ok { color: #16a34a; font-weight: bold; }
-  .alerta { color: #d97706; font-weight: bold; }
-  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { margin: 15mm; size: A4; } }
-</style></head><body><div class="page">
+<style>${sharedStyle}</style></head>
+<body>
+<div class="page">
 
   <div class="header-box">
     <div class="header-top">
@@ -1390,38 +1434,67 @@ export default function Map() {
     </div>
   </div>
 
-  <h2>INDICADORES PRINCIPALES — RED</h2>
   <table>
-    <thead>${tr(["Parámetro","Promedio","Límite normativo","Estado"],true)}</thead>
     <tbody>
-      ${tr(["Turbidez", avgTurb.toFixed(1)+" NTU", "&lt; 3 NTU", `<span class="${avgTurb>3?"supera":"ok"}">${avgTurb>3?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["Cloro libre residual", avgCloro.toFixed(2)+" mg/L", "0.20 – 2.00 mg/L", `<span class="${avgCloro<0.2?"alerta":avgCloro>2?"supera":"ok"}">${avgCloro<0.2?"⚠️ Bajo":avgCloro>2?"⛔ Alto":"✅ Normal"}</span>`])}
-      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "&lt; 1500 mg/L", `<span class="${avgTDS>1500?"supera":"ok"}">${avgTDS>1500?"⛔ Supera CAA":"✅ Normal"}</span>`])}
-      ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "&lt; 0.01 mg/L", `<span class="${avgAs>0.01?"supera":"ok"}">${avgAs>0.01?"⛔ Supera CAA":"✅ Normal"}</span>`])}
-      ${tr(["pH", avgPh.toFixed(1), "6.5 – 8.5", `<span class="${avgPh<6.5||avgPh>8.5?"alerta":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
+      ${tr(["Campañas realizadas", String(base.length)])}
+      ${tr(["Localidades monitoreadas", localidadesUnicas.join(", ")||"-"])}
+      ${tr(["Estado general", `<span class="estado-${estClase}">${estG==="PRECAUCIÓN"?"⚠️ "+estG:"✅ "+estG}</span>`])}
+    </tbody>
+  </table>
+
+  <h2>INDICADORES PRINCIPALES</h2>
+  <table>
+    <thead>${tr(["Parámetro","Promedio","Límite inferior","Límite superior","Estado"],true)}</thead>
+    <tbody>
+      ${tr(["Turbidez", avgTurb.toFixed(1)+" NTU", "—", "3.0 NTU", `<span class="${avgTurb>3?"supera":"ok"}">${avgTurb>3?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Cloro libre residual", avgCloro.toFixed(2)+" mg/L", "0.20 mg/L", "2.00 mg/L", `<span class="${avgCloro<0.2?"limite":avgCloro>2?"supera":"ok"}">${avgCloro<0.2?"⚠️ Bajo":avgCloro>2?"⛔ Alto":"✅ Normal"}</span>`])}
+      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", "—", "1500 mg/L", `<span class="${avgTDS>1500?"supera":avgTDS>1200?"limite":"ok"}">${avgTDS>1500?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Arsénico (As)", avgAs.toFixed(3)+" mg/L", "—", "0.010 mg/L", `<span class="${avgAs>0.01?"supera":avgAs>0.008?"limite":"ok"}">${avgAs>0.01?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["Flúor", avgFluor.toFixed(2)+" mg/L", "0.7 mg/L", "1.2 mg/L*", `<span class="${avgFluor>1.2?"supera":avgFluor<0.7?"limite":"ok"}">${avgFluor>1.2?"⛔ Supera":avgFluor<0.7?"⚠️ Bajo":"✅ Normal"}</span>`])}
+      ${tr(["Nitratos (NO3)", avgNO3.toFixed(1)+" mg/L", "—", "45.0 mg/L", `<span class="${avgNO3>45?"supera":avgNO3>35?"limite":"ok"}">${avgNO3>45?"⛔ Supera":"✅ Normal"}</span>`])}
+      ${tr(["pH", avgPh.toFixed(1), "6.5", "8.5", `<span class="${avgPh<6.5||avgPh>8.5?"supera":"ok"}">${avgPh<6.5||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
     </tbody>
   </table>
 
   <h2>DISTRIBUCIÓN — TURBIDEZ</h2>
-  <div class="bar-row"><div class="bar-label">Dentro de norma (≤ 3 NTU)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(turbOk)}%"></div></div><div class="bar-val" style="color:#22c55e">${turbOk} (${pct(turbOk)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Fuera de norma (&gt; 3 NTU)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(turbAlta)}%"></div></div><div class="bar-val" style="color:#ef4444">${turbAlta} (${pct(turbAlta)}%)</div></div>
+  <div class="bar-row">
+    <div class="bar-label">Dentro de norma (≤ 3 NTU)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(turbOk)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${turbOk} (${pct(turbOk)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Fuera de norma (&gt; 3 NTU)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(turbAlta)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${turbAlta} (${pct(turbAlta)}%)</div>
+  </div>
 
   <h2>DISTRIBUCIÓN — CLORO LIBRE RESIDUAL</h2>
-  <div class="bar-row"><div class="bar-label">Bajo (&lt; 0.20 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(cloroBajo)}%"></div></div><div class="bar-val" style="color:#f59e0b">${cloroBajo} (${pct(cloroBajo)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Normal (0.20–2.00 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(cloroOk)}%"></div></div><div class="bar-val" style="color:#22c55e">${cloroOk} (${pct(cloroOk)}%)</div></div>
-  <div class="bar-row"><div class="bar-label">Alto (&gt; 2.00 mg/L)</div><div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cloroAlto)}%"></div></div><div class="bar-val" style="color:#ef4444">${cloroAlto} (${pct(cloroAlto)}%)</div></div>
+  <div class="bar-row">
+    <div class="bar-label">Bajo (&lt; 0.20 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(cloroBajo)}%"></div></div>
+    <div class="bar-val" style="color:#f59e0b">${cloroBajo} (${pct(cloroBajo)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Normal (0.20–2.00 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(cloroOk)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${cloroOk} (${pct(cloroOk)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Alto (&gt; 2.00 mg/L)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cloroAlto)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${cloroAlto} (${pct(cloroAlto)}%)</div>
+  </div>
 
-  ${base.filter(p=>num(p.Turb_NTU)>3||num(p.Cloro_libre_mg_l)<0.20||num(p.Cloro_libre_mg_l)>2.00).length>0?`
+  ${puntosCriticos.length>0?`
   <h3>Puntos críticos — Red fuera de norma</h3>
   <table>
     <thead>${tr(["Localidad","Departamento","Punto de muestreo","Turbidez (NTU)","Cloro libre (mg/L)","Estado"],true)}</thead>
     <tbody>
-      ${base.filter(p=>num(p.Turb_NTU)>3||num(p.Cloro_libre_mg_l)<0.20||num(p.Cloro_libre_mg_l)>2.00)
-        .map(p=>tr([
-          p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-",
-          num(p.Turb_NTU).toFixed(1), num(p.Cloro_libre_mg_l).toFixed(2),
-          '<span class="supera">⛔ Fuera de norma</span>'
-        ])).join("")}
+      ${puntosCriticos.map(p=>tr([
+        p.Localidad||"-", p.Departamento||"-", p.PUNTO_DE_MUESTREO||"-",
+        num(p.Turb_NTU).toFixed(1), num(p.Cloro_libre_mg_l).toFixed(2),
+        '<span class="supera">⛔ Fuera de norma</span>'
+      ])).join("")}
     </tbody>
   </table>`:""}
 
@@ -1441,6 +1514,7 @@ export default function Map() {
         ${tr(["Turbidez", "&lt; 3 NTU", "Norma de potabilidad"])}
         ${tr(["Cloro libre residual", "0.20 – 2.00 mg/L", "Norma de desinfección"])}
         ${tr(["Arsénico (As) — CAA", "0.010 mg/L", "Código Alimentario Argentino Art. 982"])}
+        ${tr(["Flúor — CAA", "0.7 – 1.2 mg/L (según T° media)", "Código Alimentario Argentino Art. 982"])}
         ${tr(["TDS — CAA", "1500 mg/L", "Código Alimentario Argentino"])}
         ${tr(["Nitratos (NO3) — CAA", "45.0 mg/L", "Código Alimentario Argentino Art. 983"])}
       </tbody>
@@ -1449,7 +1523,7 @@ export default function Map() {
   </div>
 
   <div class="footer">
-    Sistema WATERGIS — Plataforma Hidroquímica · Provincia de Catamarca · WGS 84 / EPSG:4326<br>
+    Sistema WATERGIS — Provincia de Catamarca · WGS 84 / EPSG:4326<br>
     Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
   </div>
 </div>
@@ -1464,6 +1538,7 @@ export default function Map() {
     }
     setPdfLoading(false);
   };
+
 
 
   // ======================================================
@@ -2089,6 +2164,24 @@ export default function Map() {
                 </button>
               ))}
             </div>
+
+            {/* Selector de dique específico — solo si tipoPunto es DIQUE */}
+            {tipoPunto==="DIQUE" && (
+              <div className="mt-2">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
+                  Unidad
+                </label>
+                <select
+                  value={diqueSeleccionado}
+                  onChange={e=>setDiqueSeleccionado(e.target.value)}
+                  className="w-full rounded-xl border border-blue-700/50 bg-slate-950 p-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="TODOS">Todos los diques</option>
+                  {diquesUnicosLista.map(d=><option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+            )}
+
             {/* Botón generar informe específico de Diques o Red */}
             {(tipoPunto==="DIQUE"||tipoPunto==="RED") && esAutenticado && (
               <button
@@ -2099,7 +2192,7 @@ export default function Map() {
                     : "border-purple-500 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
                 }`}
               >
-                📄 Generar informe de {tipoPunto==="DIQUE"?"Diques":"Red"}
+                📄 Generar informe de {tipoPunto==="DIQUE"?(diqueSeleccionado==="TODOS"?"Todos los Diques":diqueSeleccionado):"Red"}
               </button>
             )}
           </div>
