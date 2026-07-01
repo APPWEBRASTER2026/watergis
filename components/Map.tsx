@@ -1322,6 +1322,10 @@ export default function Map() {
       const cloroEutro  = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=10&&v<50;}).length;
       const cloroAlerta = base.filter(p=>num(p.Clorofila_ug_l)>=50).length;
 
+      const bgaBajo      = base.filter(p=>num(p.Algas_BGA)<5000).length;
+      const bgaModerado  = base.filter(p=>{const v=num(p.Algas_BGA);return v>=5000&&v<10000;}).length;
+      const bgaAlto      = base.filter(p=>num(p.Algas_BGA)>=10000).length;
+
       const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
 
       const estG     = avgOD<2?"ALERTA":avgOD<5||avgCloro>=10?"PRECAUCIÓN":"NORMAL";
@@ -1433,6 +1437,23 @@ export default function Map() {
     <div class="bar-label">Floración (&gt; 50 µg/L)</div>
     <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cloroAlerta)}%"></div></div>
     <div class="bar-val" style="color:#ef4444">${cloroAlerta} (${pct(cloroAlerta)}%)</div>
+  </div>
+
+  <h2>DISTRIBUCIÓN DE RIESGO — ALGAS BGA (Cianobacterias)</h2>
+  <div class="bar-row">
+    <div class="bar-label">Bajo (&lt; 5.000 cel/mL)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(bgaBajo)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${bgaBajo} (${pct(bgaBajo)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Moderado (5.000–10.000 cel/mL)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(bgaModerado)}%"></div></div>
+    <div class="bar-val" style="color:#f59e0b">${bgaModerado} (${pct(bgaModerado)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Alto — riesgo de toxinas (&gt; 10.000 cel/mL)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(bgaAlto)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${bgaAlto} (${pct(bgaAlto)}%)</div>
   </div>
 
   ${puntosCriticos.length>0?`
