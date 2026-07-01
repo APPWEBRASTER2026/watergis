@@ -1313,6 +1313,10 @@ export default function Map() {
       const odBajo    = base.filter(p=>{const v=num(p.OD_mg_l);return v>=2&&v<5;}).length;
       const odNormal  = base.filter(p=>num(p.OD_mg_l)>=5).length;
 
+      const satBajo   = base.filter(p=>num(p.Sat_O2_pct)<80).length;
+      const satNormal = base.filter(p=>{const v=num(p.Sat_O2_pct);return v>=80&&v<=120;}).length;
+      const satAlto   = base.filter(p=>num(p.Sat_O2_pct)>120).length;
+
       const cloroOligo  = base.filter(p=>num(p.Clorofila_ug_l)<3).length;
       const cloroMeso   = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=3&&v<10;}).length;
       const cloroEutro  = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=10&&v<50;}).length;
@@ -1323,7 +1327,11 @@ export default function Map() {
       const estG     = avgOD<2?"ALERTA":avgOD<5||avgCloro>=10?"PRECAUCIÓN":"NORMAL";
       const estClase = avgOD<2?"alerta":avgOD<5||avgCloro>=10?"precaucion":"normal";
 
-      const puntosCriticos = base.filter(p=>num(p.OD_mg_l)<2||num(p.Clorofila_ug_l)>=50||num(p.Algas_BGA)>=10000)
+      const puntosCriticos = base.filter(p=>
+          num(p.OD_mg_l)<2 ||
+          num(p.Sat_O2_pct)<80 || num(p.Sat_O2_pct)>120 ||
+          num(p.Clorofila_ug_l)>=50 ||
+          num(p.Algas_BGA)>=10000)
         .sort((a,b)=>num(a.OD_mg_l)-num(b.OD_mg_l));
 
       const diquesUnicos = [...new Set(base.map(p=>p.PUNTO_DE_MUESTREO))];
@@ -1388,6 +1396,23 @@ export default function Map() {
     <div class="bar-val" style="color:#22c55e">${odNormal} (${pct(odNormal)}%)</div>
   </div>
 
+  <h2>DISTRIBUCIÓN — SATURACIÓN DE OXÍGENO (O₂)</h2>
+  <div class="bar-row">
+    <div class="bar-label">Bajo (&lt; 80%)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(satBajo)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${satBajo} (${pct(satBajo)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Normal (80–120%)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(satNormal)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${satNormal} (${pct(satNormal)}%)</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Sobresaturado (&gt; 120%)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(satAlto)}%"></div></div>
+    <div class="bar-val" style="color:#f59e0b">${satAlto} (${pct(satAlto)}%)</div>
+  </div>
+
   <h2>ESTADO TRÓFICO — CLOROFILA-A</h2>
   <div class="bar-row">
     <div class="bar-label">Oligotrófico (&lt; 3 µg/L)</div>
@@ -1413,11 +1438,11 @@ export default function Map() {
   ${puntosCriticos.length>0?`
   <h3>Puntos críticos — Diques en alerta sanitaria</h3>
   <table>
-    <thead>${tr(["Dique","Departamento","OD (mg/L)","Clorofila (µg/L)","Algas BGA (cel/mL)","Estado"],true)}</thead>
+    <thead>${tr(["Dique","Departamento","OD (mg/L)","Sat. O₂ (%)","Clorofila (µg/L)","Algas BGA (cel/mL)","Estado"],true)}</thead>
     <tbody>
       ${puntosCriticos.map(p=>tr([
         p.PUNTO_DE_MUESTREO||"-", p.Departamento||"-",
-        num(p.OD_mg_l).toFixed(1), num(p.Clorofila_ug_l).toFixed(1), num(p.Algas_BGA).toFixed(0),
+        num(p.OD_mg_l).toFixed(1), num(p.Sat_O2_pct).toFixed(0), num(p.Clorofila_ug_l).toFixed(1), num(p.Algas_BGA).toFixed(0),
         '<span class="supera">⛔ ALERTA</span>'
       ])).join("")}
     </tbody>
