@@ -523,6 +523,21 @@ export default function Map() {
   // Filtro sidebar
   const [selectedFiltDept, setSelectedFiltDept] = useState("TODOS");
 
+  // Punto de muestreo específico de RED (análogo a diqueSeleccionado)
+  const [redPuntoSeleccionado, setRedPuntoSeleccionado] = useState("TODOS");
+
+  // Puntos de muestreo de RED — si hay una Localidad elegida en el filtro (search),
+  // se listan solo los puntos de esa localidad; si hay Departamento, los de ese departamento
+  const redPuntosUnicosLista = useMemo(()=>{
+    let base = points.filter(p=>(p.Tipo_Punto||"").toUpperCase()==="RED");
+    if(search) base = base.filter(p=>p.Localidad===search);
+    else if(selectedFiltDept!=="TODOS") base = base.filter(p=>p.Departamento===selectedFiltDept);
+    return [...new Set(base.map(p=>p.PUNTO_DE_MUESTREO))].filter(Boolean).sort();
+  },[points, search, selectedFiltDept]);
+
+  // Si cambia la Localidad o el Departamento, reseteo el punto de red elegido
+  useEffect(()=>{ setRedPuntoSeleccionado("TODOS"); },[search, selectedFiltDept]);
+
   // Menú hamburguesa
   const [hamburgerOpen, setHamburgerOpen] = useState(false);
   const [panelMenu, setPanelMenu]         = useState<PanelMenu>(null);
@@ -1161,32 +1176,40 @@ export default function Map() {
   const generarPDFEspecial = (tipo: "DIQUE"|"RED") => {
     setPdfLoading(true);
 
+    // Diques y Red usan los filtros de Departamento / Localidad ya elegidos en el panel lateral
+    const fDept = selectedFiltDept;
+    const fLoc  = search || "TODAS";
+
     const base: Punto[] = points.filter(p => {
       const lat = parseFloat(p.Latitud?.toString().replace(",","."));
       const lng = parseFloat(p.Longitud?.toString().replace(",","."));
       if(isNaN(lat)||isNaN(lng)) return false;
       if((p.Tipo_Punto||"").toUpperCase()!==tipo) return false;
-      const dOk = infDept==="TODOS" || p.Departamento===infDept;
-      const lOk = infLoc==="TODAS"  || p.Localidad===infLoc;
+      const dOk = fDept==="TODOS" || p.Departamento===fDept;
+      const lOk = fLoc==="TODAS"  || p.Localidad===fLoc;
       const diqueOk = tipo!=="DIQUE" || diqueSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===diqueSeleccionado;
-      return dOk && lOk && diqueOk;
+      const redOk   = tipo!=="RED"   || redPuntoSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===redPuntoSeleccionado;
+      return dOk && lOk && diqueOk && redOk;
     });
 
     const fecha = new Date().toLocaleDateString("es-AR");
-    const soloDeptoR  = infDept!=="TODOS" && infLoc==="TODAS";
-    const soloLocR    = infLoc!=="TODAS";
-    const soloUnDique = tipo==="DIQUE" && diqueSeleccionado!=="TODOS";
+    const soloDeptoR     = fDept!=="TODOS" && fLoc==="TODAS";
+    const soloLocR       = fLoc!=="TODAS";
+    const soloUnDique    = tipo==="DIQUE" && diqueSeleccionado!=="TODOS";
+    const soloUnPuntoRed = tipo==="RED"   && redPuntoSeleccionado!=="TODOS";
 
     const titulo2 = tipo==="DIQUE"
       ? (soloUnDique ? `${diqueSeleccionado.toUpperCase()} · ${base[0]?.Departamento?.toUpperCase()||""}` : `PROVINCIA DE CATAMARCA — TODOS LOS DIQUES`)
-      : (soloLocR
-        ? `${infLoc.toUpperCase()} · ${(infDept!=="TODOS"?infDept:base[0]?.Departamento||"").toUpperCase()}`
-        : soloDeptoR ? `DEPARTAMENTO ${infDept.toUpperCase()}`
+      : (soloUnPuntoRed
+        ? `${redPuntoSeleccionado.toUpperCase()} · ${base[0]?.Localidad?.toUpperCase()||""}`
+        : soloLocR
+        ? `${fLoc.toUpperCase()} · ${(fDept!=="TODOS"?fDept:base[0]?.Departamento||"").toUpperCase()}`
+        : soloDeptoR ? `DEPARTAMENTO ${fDept.toUpperCase()}`
         : `PROVINCIA DE CATAMARCA — TODOS LOS PUNTOS DE RED`);
 
     const nombreBase2 = tipo==="DIQUE"
       ? (soloUnDique ? diqueSeleccionado : "Todos_los_diques")
-      : (soloLocR ? infLoc : soloDeptoR ? `Departamento_${infDept}` : "General");
+      : (soloUnPuntoRed ? redPuntoSeleccionado : soloLocR ? fLoc : soloDeptoR ? `Departamento_${fDept}` : "General");
 
     const num = (v:string|undefined) => parseFloat(String(v||"0").replace(",","."));
     const avg = (arr:Punto[], f:(p:Punto)=>number) => arr.length>0 ? arr.reduce((a,p)=>a+f(p),0)/arr.length : 0;
@@ -2142,20 +2165,19 @@ export default function Map() {
             )}
           </div>
 
-          {/* Tipo de punto */}
+          {/* Tipo de punto — filtro aparte, independiente del filtro de Fuente (Subterránea/Superficial/Mezcla) */}
           <div className="mb-3">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
               Tipo de punto
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               {([
-                {key:"TODOS", label:"Todos",  color:"border-slate-700 text-slate-400"},
                 {key:"DIQUE", label:"Diques", color:"border-blue-500 text-blue-300"},
                 {key:"RED",   label:"Red",    color:"border-purple-500 text-purple-300"},
               ] as {key:string;label:string;color:string}[]).map(opt=>(
                 <button
                   key={opt.key}
-                  onClick={()=>setTipoPunto(opt.key as any)}
+                  onClick={()=>setTipoPunto(tipoPunto===opt.key ? "TODOS" : opt.key as any)}
                   className={`rounded-lg border p-1.5 text-[10px] font-semibold transition-all ${
                     tipoPunto===opt.key ? opt.color+" bg-slate-800" : "border-slate-800 bg-slate-950 text-slate-600 hover:border-slate-600"
                   }`}
@@ -2182,6 +2204,31 @@ export default function Map() {
               </div>
             )}
 
+            {/* Selector de punto de muestreo específico — solo si tipoPunto es RED.
+                Si ya elegiste una Localidad más abajo, acá solo aparecen los puntos de esa localidad. */}
+            {tipoPunto==="RED" && (
+              <div className="mt-2">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
+                  Punto de muestreo
+                </label>
+                <select
+                  value={redPuntoSeleccionado}
+                  onChange={e=>setRedPuntoSeleccionado(e.target.value)}
+                  className="w-full rounded-xl border border-purple-700/50 bg-slate-950 p-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                >
+                  <option value="TODOS">
+                    {search ? `Todos los puntos de ${search}` : "Todos los puntos de Red"}
+                  </option>
+                  {redPuntosUnicosLista.map(pt=><option key={pt} value={pt}>{pt}</option>)}
+                </select>
+                {!search && (
+                  <p className="text-[9px] text-slate-500 mt-1">
+                    Tip: elegí una Localidad abajo para ver solo sus puntos de muestreo.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Botón generar informe específico de Diques o Red */}
             {(tipoPunto==="DIQUE"||tipoPunto==="RED") && esAutenticado && (
               <button
@@ -2192,7 +2239,9 @@ export default function Map() {
                     : "border-purple-500 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
                 }`}
               >
-                📄 Generar informe de {tipoPunto==="DIQUE"?(diqueSeleccionado==="TODOS"?"Todos los Diques":diqueSeleccionado):"Red"}
+                📄 Generar informe de {tipoPunto==="DIQUE"
+                  ? (diqueSeleccionado==="TODOS" ? "Todos los Diques" : diqueSeleccionado)
+                  : (redPuntoSeleccionado==="TODOS" ? (search ? `Red — ${search}` : "Red") : redPuntoSeleccionado)}
               </button>
             )}
           </div>
@@ -2360,7 +2409,43 @@ export default function Map() {
             Ph:parseAs(c.Ph),
             Fluor:parseFloat(String(c.Fluor_mg_l||"0").replace(",",".")),
             NO3:parseFloat(String(c.NO3_mg_l||"0").replace(",",".")),
+            Turb:parseFloat(String(c.Turb_NTU||"0").replace(",",".")),
+            Clorofila:parseFloat(String(c.Clorofila_ug_l||"0").replace(",",".")),
+            BGA:parseFloat(String(c.Algas_BGA||"0").replace(",",".")),
+            Cloro:parseFloat(String(c.Cloro_libre_mg_l||"0").replace(",",".")),
+            OD:parseFloat(String(c.OD_mg_l||"0").replace(",",".")),
+            SatO2:parseFloat(String(c.Sat_O2_pct||"0").replace(",",".")),
           }));
+
+          // Cards del popup — dependen del tipo de punto
+          const baseCards = [
+            {key:"As",   label:"As",    val:point.As_mg_l,    color:"#22d3ee"},
+            {key:"TDS",  label:"TDS",   val:point.TDS_mg_l,   color:"#f59e0b"},
+            {key:"Ph",   label:"pH",    val:point.Ph,         color:"#a78bfa"},
+          ];
+          const diqueCards = [
+            {key:"TDS",       label:"TDS",            val:point.TDS_mg_l||"-",       color:"#f59e0b"},
+            {key:"Turb",      label:"Turbidez (NTU)", val:point.Turb_NTU||"-",       color:"#c084fc"},
+            {key:"Clorofila", label:"Clorofila",      val:point.Clorofila_ug_l||"-", color:"#22c55e"},
+            {key:"BGA",       label:"Algas BGA",      val:point.Algas_BGA||"-",      color:"#ef4444"},
+          ];
+          const redCards = [
+            {key:"Turb", label:"Turbidez (NTU)", val:point.Turb_NTU||"-",         color:"#c084fc"},
+            {key:"Cloro",label:"Cloro libre",    val:point.Cloro_libre_mg_l||"-", color:"#34d399"},
+            {key:"TDS",  label:"TDS",            val:point.TDS_mg_l||"-",         color:"#f59e0b"},
+          ];
+          const pozoCards = [
+            {key:"Fluor",label:"Flúor", val:point.Fluor_mg_l, color:"#34d399"},
+            {key:"NO3",  label:"NO3",   val:point.NO3_mg_l,   color:"#f87171"},
+          ];
+          const cards = point.Tipo_Punto==="DIQUE"
+            ? diqueCards
+            : point.Tipo_Punto==="RED"
+            ? redCards
+            : [...baseCards, ...pozoCards];
+
+          const popupKey = `${point.PUNTO_DE_MUESTREO}_${point.Localidad}`;
+          const activeVar = popupVar[popupKey] ?? cards[0]?.key ?? selectedVariable;
 
           return (
             <Marker key={index} position={[lat,lng]} icon={esAutenticado ? getMarkerIcon(point) : greenIcon}>
@@ -2381,55 +2466,28 @@ export default function Map() {
                     <>
                       {/* CARDS clicables — dinámicas según tipo de punto */}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginBottom:"10px"}}>
-                        {(() => {
-                          const baseCards = [
-                            {key:"As",   label:"As",    val:point.As_mg_l,    color:"#22d3ee"},
-                            {key:"TDS",  label:"TDS",   val:point.TDS_mg_l,   color:"#f59e0b"},
-                            {key:"Ph",   label:"pH",    val:point.Ph,         color:"#a78bfa"},
-                          ];
-                          const diqueCards = [
-                            {key:"OD",       label:"OD (mg/L)",  val:point.OD_mg_l||"-",       color:"#22c55e"},
-                            {key:"SatO2",    label:"Sat. O₂ %",  val:point.Sat_O2_pct||"-",    color:"#34d399"},
-                            {key:"Clorofila",label:"Clorofila",  val:point.Clorofila_ug_l||"-",color:"#f59e0b"},
-                            {key:"BGA",      label:"Algas BGA",  val:point.Algas_BGA||"-",     color:"#ef4444"},
-                          ];
-                          const redCards = [
-                            {key:"Turb", label:"Turbidez (NTU)", val:point.Turb_NTU||"-",         color:"#c084fc"},
-                            {key:"Cloro",label:"Cloro libre",    val:point.Cloro_libre_mg_l||"-", color:"#34d399"},
-                          ];
-                          const pozoCards = [
-                            {key:"Fluor",label:"Flúor", val:point.Fluor_mg_l, color:"#34d399"},
-                            {key:"NO3",  label:"NO3",   val:point.NO3_mg_l,   color:"#f87171"},
-                          ];
-                          const cards = point.Tipo_Punto==="DIQUE"
-                            ? [...baseCards, ...diqueCards]
-                            : point.Tipo_Punto==="RED"
-                            ? [...baseCards, ...redCards]
-                            : [...baseCards, ...pozoCards];
-
-                          return cards.map(card=>(
-                            <div
-                              key={card.key}
-                              onClick={()=>setPopupVar(prev=>({...prev,[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]:card.key}))}
-                              style={{
-                                background: (popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
-                                  ? "rgba(6,182,212,0.15)" : "#0f172a",
-                                border: `1px solid ${(popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable)===card.key
-                                  ? card.color : "rgba(255,255,255,0.08)"}`,
-                                borderRadius:"10px", padding:"8px", cursor:"pointer",
-                                transition:"all 0.15s",
-                              }}
-                            >
-                              <div style={{fontSize:"10px",opacity:0.7,marginBottom:"2px"}}>{card.label}</div>
-                              <div style={{fontSize:"16px",fontWeight:700,color:card.color}}>{card.val}</div>
-                            </div>
-                          ));
-                        })()}
+                        {cards.map(card=>(
+                          <div
+                            key={card.key}
+                            onClick={()=>setPopupVar(prev=>({...prev,[popupKey]:card.key}))}
+                            style={{
+                              background: activeVar===card.key
+                                ? "rgba(6,182,212,0.15)" : "#0f172a",
+                              border: `1px solid ${activeVar===card.key
+                                ? card.color : "rgba(255,255,255,0.08)"}`,
+                              borderRadius:"10px", padding:"8px", cursor:"pointer",
+                              transition:"all 0.15s",
+                            }}
+                          >
+                            <div style={{fontSize:"10px",opacity:0.7,marginBottom:"2px"}}>{card.label}</div>
+                            <div style={{fontSize:"16px",fontWeight:700,color:card.color}}>{card.val}</div>
+                          </div>
+                        ))}
                       </div>
                       {/* GRÁFICO del parámetro seleccionado */}
                       <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"4px",textAlign:"center"}}>
                         Evolución histórica — <strong style={{color:"#22d3ee"}}>
-                          {popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable}
+                          {activeVar}
                         </strong>
                       </div>
                       <div style={{width:"100%",height:"200px"}}>
@@ -2441,7 +2499,7 @@ export default function Map() {
                             <Tooltip/>
                             <Line
                               type="monotone"
-                              dataKey={popupVar[`${point.PUNTO_DE_MUESTREO}_${point.Localidad}`]??selectedVariable}
+                              dataKey={activeVar}
                               stroke="#22d3ee"
                               strokeWidth={2.5}
                               dot={{r:3}}
