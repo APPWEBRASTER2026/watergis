@@ -76,11 +76,6 @@ const violetIcon = new L.Icon({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
   iconSize: [25, 41], iconAnchor: [12, 41],
 });
-const greyIcon = new L.Icon({
-  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41], iconAnchor: [12, 41],
-});
 
 // ======================================================
 // TYPES
@@ -95,7 +90,6 @@ type Punto = {
   NO3_mg_l: string;
   OD_mg_l: string; Sat_O2_pct: string; Clorofila_ug_l: string;
   Algas_BGA: string; Cloro_libre_mg_l: string;
-  DBO_mg_l: string; DQO_mg_l: string; Detergentes_mg_l: string; Grasas_Aceites_mg_l: string;
   Latitud: string; Longitud: string;
 };
 
@@ -423,92 +417,19 @@ const USUARIOS: Record<string, { password: string; nombre: string }> = {
 const STORAGE_KEY = "watergis_session";
 
 function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => void }) {
-  const [modo, setModo] = useState<"login"|"registro">("login");
-
-  // ── Campos de login ──
   const [usuario, setUsuario]   = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
-
-  // ── Campos de registro ──
-  const [regNombre, setRegNombre]     = useState("");
-  const [regUsuario, setRegUsuario]   = useState("");
-  const [regEmail, setRegEmail]       = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regPassword2, setRegPassword2] = useState("");
-  const [regError, setRegError]       = useState("");
-  const [regOk, setRegOk]             = useState("");
-  const [regLoading, setRegLoading]   = useState(false);
-
-  const handleLogin = async () => {
+  const handleLogin = () => {
     setError(""); setLoading(true);
-
-    // 1) Usuarios históricos hardcodeados — se mantienen funcionando sin tocar nada
-    const u = USUARIOS[usuario.trim().toLowerCase()];
-    if (u && u.password === password) {
-      onLogin(usuario.trim().toLowerCase(), u.nombre);
+    setTimeout(() => {
+      const u = USUARIOS[usuario.trim().toLowerCase()];
+      if (u && u.password === password) { onLogin(usuario.trim().toLowerCase(), u.nombre); }
+      else { setError("Usuario o contraseña incorrectos."); }
       setLoading(false);
-      return;
-    }
-
-    // 2) Usuarios registrados en la base de datos
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario: usuario.trim(), password }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        onLogin(data.usuario, data.nombre);
-      } else {
-        setError(data.error || "Usuario o contraseña incorrectos.");
-      }
-    } catch {
-      setError("No se pudo conectar con el servidor. Intentá de nuevo.");
-    } finally {
-      setLoading(false);
-    }
+    }, 600);
   };
-
-  const handleRegister = async () => {
-    setRegError(""); setRegOk("");
-    if (!regNombre.trim() || !regUsuario.trim() || !regPassword) {
-      setRegError("Completá nombre, usuario y contraseña."); return;
-    }
-    if (regPassword !== regPassword2) {
-      setRegError("Las contraseñas no coinciden."); return;
-    }
-    if (regPassword.length < 6) {
-      setRegError("La contraseña debe tener al menos 6 caracteres."); return;
-    }
-    setRegLoading(true);
-    try {
-      const res = await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          usuario: regUsuario.trim(),
-          password: regPassword,
-          nombre: regNombre.trim(),
-          email: regEmail.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setRegOk("¡Cuenta creada! Iniciando sesión...");
-        setTimeout(()=>onLogin(data.usuario, data.nombre), 800);
-      } else {
-        setRegError(data.error || "No se pudo crear la cuenta.");
-      }
-    } catch {
-      setRegError("No se pudo conectar con el servidor. Intentá de nuevo.");
-    } finally {
-      setRegLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-[#020617] flex items-center justify-center z-[99999]">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -523,66 +444,25 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
           <h1 className="text-3xl font-black text-cyan-400 tracking-tight">WATERGIS</h1>
           <p className="text-slate-400 text-sm mt-1">Plataforma Hidroquímica — Provincia de Catamarca</p>
         </div>
-
-        {modo==="login" ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-950 p-8 shadow-2xl">
-            <h2 className="text-white font-bold text-lg mb-6 text-center">Iniciar sesión</h2>
-            <div className="mb-4">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Usuario</label>
-              <input type="text" value={usuario} onChange={e=>setUsuario(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Ingresá tu usuario" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
-            </div>
-            <div className="mb-6">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Contraseña</label>
-              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Ingresá tu contraseña" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
-            </div>
-            {error && <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400 text-center">{error}</div>}
-            <button onClick={handleLogin} disabled={loading} className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 transition-colors disabled:opacity-50">
-              {loading?"Verificando...":"Ingresar"}
-            </button>
-            <div className="mt-6 pt-5 border-t border-slate-800">
-              <button onClick={()=>{setModo("registro");setError("");}} className="w-full rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2.5 font-bold text-cyan-400 hover:bg-cyan-500/20 transition-colors text-sm">
-                ✨ Registrar nuevo usuario
-              </button>
-              <p className="text-xs text-slate-500 text-center mt-3">¿Problemas para acceder? Contactá al administrador.</p>
-              <p className="text-xs text-slate-600 text-center mt-1">watergis@catamarca.gob.ar</p>
-            </div>
+        <div className="rounded-2xl border border-slate-700 bg-slate-950 p-8 shadow-2xl">
+          <h2 className="text-white font-bold text-lg mb-6 text-center">Iniciar sesión</h2>
+          <div className="mb-4">
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Usuario</label>
+            <input type="text" value={usuario} onChange={e=>setUsuario(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Ingresá tu usuario" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
           </div>
-        ) : (
-          <div className="rounded-2xl border border-slate-700 bg-slate-950 p-8 shadow-2xl">
-            <h2 className="text-white font-bold text-lg mb-6 text-center">Crear cuenta nueva</h2>
-            <div className="mb-4">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Nombre completo</label>
-              <input type="text" value={regNombre} onChange={e=>setRegNombre(e.target.value)} placeholder="Ej: Juan Pérez" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
-            </div>
-            <div className="mb-4">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Usuario</label>
-              <input type="text" value={regUsuario} onChange={e=>setRegUsuario(e.target.value)} placeholder="Ej: juan.perez" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
-            </div>
-            <div className="mb-4">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Email (opcional)</label>
-              <input type="email" value={regEmail} onChange={e=>setRegEmail(e.target.value)} placeholder="juan@ejemplo.com" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
-            </div>
-            <div className="mb-4">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Contraseña</label>
-              <input type="password" value={regPassword} onChange={e=>setRegPassword(e.target.value)} placeholder="Mínimo 6 caracteres" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
-            </div>
-            <div className="mb-6">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Repetir contraseña</label>
-              <input type="password" value={regPassword2} onChange={e=>setRegPassword2(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleRegister()} placeholder="Repetí la contraseña" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
-            </div>
-            {regError && <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400 text-center">{regError}</div>}
-            {regOk && <div className="mb-4 rounded-xl border border-green-500/40 bg-green-500/10 p-3 text-sm text-green-400 text-center">{regOk}</div>}
-            <button onClick={handleRegister} disabled={regLoading} className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 transition-colors disabled:opacity-50">
-              {regLoading?"Creando cuenta...":"Crear cuenta"}
-            </button>
-            <div className="mt-6 pt-5 border-t border-slate-800">
-              <button onClick={()=>{setModo("login");setRegError("");setRegOk("");}} className="w-full text-sm text-slate-400 hover:text-cyan-400 transition-colors">
-                ← Volver a iniciar sesión
-              </button>
-            </div>
+          <div className="mb-6">
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Contraseña</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Ingresá tu contraseña" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
           </div>
-        )}
-
+          {error && <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400 text-center">{error}</div>}
+          <button onClick={handleLogin} disabled={loading} className="w-full rounded-xl bg-cyan-500 py-3 font-bold text-black hover:bg-cyan-400 transition-colors disabled:opacity-50">
+            {loading?"Verificando...":"Ingresar"}
+          </button>
+          <div className="mt-6 pt-5 border-t border-slate-800">
+            <p className="text-xs text-slate-500 text-center">¿No tenés acceso? Contactá al administrador.</p>
+            <p className="text-xs text-slate-600 text-center mt-1">watergis@catamarca.gob.ar</p>
+          </div>
+        </div>
         <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-center">
           <p className="text-xs text-slate-400">🌐 Podés explorar el mapa sin iniciar sesión —
             <button onClick={()=>onLogin("publico","Visitante")} className="text-cyan-500 hover:text-cyan-400 ml-1 underline underline-offset-2">continuar sin cuenta</button>
@@ -592,171 +472,9 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
     </div>
   );
 }
-
 // ======================================================
-// FORMULARIO DE CARGA DE DATOS
+// COMPONENT
 // ======================================================
-function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onClose: () => void; onGuardado: () => void }) {
-  const vacio = {
-    localidad: "", departamento: "", fuente: "SUBTERRANEA", tipo_punto: "POZO",
-    punto_de_muestreo: "", fecha_de_monitoreo: "", ph: "", t_c: "", tds_mg_l: "",
-    turb_ntu: "", salinidad_mg_l: "", as_mg_l: "", fluor_mg_l: "", no3_mg_l: "",
-    od_mg_l: "", sat_o2_pct: "", clorofila_ug_l: "", algas_bga: "", cloro_libre_mg_l: "",
-    dbo_mg_l: "", dqo_mg_l: "", detergentes_mg_l: "", grasas_aceites_mg_l: "",
-    latitud: "", longitud: "",
-  };
-  const [form, setForm] = useState(vacio);
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const set = (campo: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm(prev => ({ ...prev, [campo]: e.target.value }));
-
-  // Qué parámetros mostrar según el tipo de punto elegido — evita llenar campos que no aplican
-  const gruposParametros: Record<string, {key:string; label:string; unidad?:string}[]> = {
-    POZO: [
-      {key:"ph", label:"pH"}, {key:"t_c", label:"Temperatura", unidad:"°C"},
-      {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"turb_ntu", label:"Turbidez", unidad:"NTU"},
-      {key:"salinidad_mg_l", label:"Salinidad", unidad:"mg/L"}, {key:"as_mg_l", label:"Arsénico", unidad:"mg/L"},
-      {key:"fluor_mg_l", label:"Flúor", unidad:"mg/L"}, {key:"no3_mg_l", label:"Nitratos (NO3)", unidad:"mg/L"},
-    ],
-    DIQUE: [
-      {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"turb_ntu", label:"Turbidez", unidad:"NTU"},
-      {key:"od_mg_l", label:"Oxígeno Disuelto (OD)", unidad:"mg/L"}, {key:"sat_o2_pct", label:"Saturación de O₂", unidad:"%"},
-      {key:"clorofila_ug_l", label:"Clorofila-a", unidad:"µg/L"}, {key:"algas_bga", label:"Algas BGA", unidad:"cel/mL"},
-    ],
-    RED: [
-      {key:"turb_ntu", label:"Turbidez", unidad:"NTU"}, {key:"cloro_libre_mg_l", label:"Cloro libre", unidad:"mg/L"},
-      {key:"tds_mg_l", label:"TDS", unidad:"mg/L"},
-    ],
-    EFLUENTE: [
-      {key:"dbo_mg_l", label:"DBO5", unidad:"mg/L"}, {key:"dqo_mg_l", label:"DQO", unidad:"mg/L"},
-      {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"detergentes_mg_l", label:"Detergentes", unidad:"mg/L"},
-      {key:"grasas_aceites_mg_l", label:"Grasas y Aceites", unidad:"mg/L"}, {key:"ph", label:"pH"},
-    ],
-  };
-  const parametrosActivos = gruposParametros[form.tipo_punto] || gruposParametros.POZO;
-
-  const handleGuardar = async () => {
-    setError(""); setOk(false);
-    if (!form.localidad.trim() || !form.departamento.trim() || !form.punto_de_muestreo.trim() || !form.latitud.trim() || !form.longitud.trim()) {
-      setError("Localidad, Departamento, Punto de muestreo, Latitud y Longitud son obligatorios.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch("/api/puntos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, usuario }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setOk(true);
-        onGuardado();
-        setTimeout(() => setForm(vacio), 100);
-      } else {
-        setError(data.error || "No se pudo guardar el punto.");
-      }
-    } catch {
-      setError("No se pudo conectar con el servidor. Intentá de nuevo.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const inputClass = "w-full rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors";
-  const labelClass = "text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1 block";
-
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[99999] p-4">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
-        <div className="sticky top-0 bg-slate-950 border-b border-slate-800 p-5 flex justify-between items-center z-10">
-          <div>
-            <h2 className="text-white font-bold text-lg">➕ Cargar dato de monitoreo</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Se guarda directo en la base de datos — aparece en el mapa al instante.</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">✕</button>
-        </div>
-
-        <div className="p-5">
-          {/* Tipo de punto — define qué parámetros se piden más abajo */}
-          <div className="mb-4">
-            <label className={labelClass}>Tipo de punto *</label>
-            <div className="grid grid-cols-4 gap-2">
-              {["POZO","DIQUE","RED","EFLUENTE"].map(tp => (
-                <button
-                  key={tp}
-                  onClick={()=>setForm(prev=>({...prev, tipo_punto: tp}))}
-                  className={`rounded-lg border py-2 text-xs font-bold transition-colors ${
-                    form.tipo_punto===tp ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
-                  }`}
-                >
-                  {tp==="POZO"?"🚰 Pozo":tp==="DIQUE"?"🌊 Dique":tp==="RED"?"🚿 Red":"🏭 Efluente"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className={labelClass}>Fuente *</label>
-            <div className="grid grid-cols-3 gap-2">
-              {["SUBTERRANEA","SUPERFICIAL","MEZCLA"].map(f => (
-                <button
-                  key={f}
-                  onClick={()=>setForm(prev=>({...prev, fuente: f}))}
-                  className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
-                    form.fuente===f ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
-                  }`}
-                >
-                  {f==="SUBTERRANEA"?"Subterránea":f==="SUPERFICIAL"?"Superficial":"Mezcla"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">Ubicación</h3>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div><label className={labelClass}>Localidad *</label><input className={inputClass} value={form.localidad} onChange={set("localidad")} placeholder="Ej: San Fernando"/></div>
-            <div><label className={labelClass}>Departamento *</label><input className={inputClass} value={form.departamento} onChange={set("departamento")} placeholder="Ej: Capital"/></div>
-          </div>
-          <div className="mb-3">
-            <label className={labelClass}>Punto de muestreo *</label>
-            <input className={inputClass} value={form.punto_de_muestreo} onChange={set("punto_de_muestreo")} placeholder="Ej: Pozo N°3, Dique Ipizca, Red Escuela N°317..."/>
-          </div>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            <div><label className={labelClass}>Latitud *</label><input className={inputClass} value={form.latitud} onChange={set("latitud")} placeholder="-28.4696"/></div>
-            <div><label className={labelClass}>Longitud *</label><input className={inputClass} value={form.longitud} onChange={set("longitud")} placeholder="-65.7852"/></div>
-            <div><label className={labelClass}>Fecha de monitoreo</label><input type="date" className={inputClass} value={form.fecha_de_monitoreo} onChange={set("fecha_de_monitoreo")}/></div>
-          </div>
-
-          <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">
-            Parámetros — {form.tipo_punto==="POZO"?"Pozo":form.tipo_punto==="DIQUE"?"Dique":form.tipo_punto==="RED"?"Red":"Efluente"}
-          </h3>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            {parametrosActivos.map(p => (
-              <div key={p.key}>
-                <label className={labelClass}>{p.label}{p.unidad?` (${p.unidad})`:""}</label>
-                <input className={inputClass} value={(form as any)[p.key]} onChange={set(p.key)} placeholder="0.00" inputMode="decimal"/>
-              </div>
-            ))}
-          </div>
-
-          {error && <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400 text-center">{error}</div>}
-          {ok && <div className="mt-3 rounded-xl border border-green-500/40 bg-green-500/10 p-3 text-sm text-green-400 text-center">✅ Punto guardado — ya está visible en el mapa.</div>}
-
-          <div className="flex gap-3 mt-5">
-            <button onClick={onClose} className="flex-1 rounded-xl border border-slate-700 py-3 text-sm font-semibold text-slate-300 hover:bg-slate-800">Cerrar</button>
-            <button onClick={handleGuardar} disabled={loading} className="flex-1 rounded-xl bg-cyan-500 py-3 text-sm font-bold text-black hover:bg-cyan-400 disabled:opacity-50">
-              {loading?"Guardando...":"Guardar y agregar al mapa"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Map() {
   // ── AUTH ──
@@ -787,7 +505,6 @@ export default function Map() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showPerfil, setShowPerfil]     = useState(false);
   const [showAjustes, setShowAjustes]   = useState(false);
-  const [showCargaForm, setShowCargaForm] = useState(false);
   const [selectedVariable, setSelectedVariable] = useState("As");
   const [selectedFuente, setSelectedFuente]     = useState("TODAS");
 
@@ -795,19 +512,12 @@ export default function Map() {
   const [popupVar, setPopupVar] = useState<Record<string,string>>({});
 
   // Filtro tipo de punto
-  const [tipoPunto, setTipoPunto] = useState<"TODOS"|"POZO"|"DIQUE"|"RED"|"EFLUENTE">("TODOS");
-  const [infTipoPunto, setInfTipoPunto] = useState<"DIQUE"|"RED"|"EFLUENTE"|null>(null);
+  const [tipoPunto, setTipoPunto] = useState<"TODOS"|"POZO"|"DIQUE"|"RED">("TODOS");
+  const [infTipoPunto, setInfTipoPunto] = useState<"DIQUE"|"RED"|null>(null);
   const [diqueSeleccionado, setDiqueSeleccionado] = useState("TODOS");
 
   const diquesUnicosLista = useMemo(()=>
     [...new Set(points.filter(p=>(p.Tipo_Punto||"").toUpperCase()==="DIQUE").map(p=>p.PUNTO_DE_MUESTREO))].filter(Boolean).sort()
-  ,[points]);
-
-  // Punto de efluente específico (mismo patrón que diqueSeleccionado)
-  const [efluenteSeleccionado, setEfluenteSeleccionado] = useState("TODOS");
-
-  const efluentesUnicosLista = useMemo(()=>
-    [...new Set(points.filter(p=>(p.Tipo_Punto||"").toUpperCase()==="EFLUENTE").map(p=>p.PUNTO_DE_MUESTREO))].filter(Boolean).sort()
   ,[points]);
 
   // Filtro sidebar
@@ -929,64 +639,12 @@ export default function Map() {
     fecha: string;
   }>({ visible: false, total: 0, porDpto: [], fecha: "" });
 
-  // Convierte una fila de la tabla puntos_monitoreo (snake_case) al formato Punto usado en toda la app
-  const dbRowToPunto = (row: any): Punto => ({
-    Localidad: row.localidad || "",
-    Departamento: row.departamento || "",
-    Fuente: row.fuente || "",
-    Tipo_Punto: row.tipo_punto || "",
-    PUNTO_DE_MUESTREO: row.punto_de_muestreo || "",
-    Fecha_de_monitoreo: row.fecha_de_monitoreo || "",
-    Ph: row.ph || "",
-    "T_ºC": row.t_c || "",
-    TDS_mg_l: row.tds_mg_l || "",
-    Turb_NTU: row.turb_ntu || "",
-    Salinidad_mg_l: row.salinidad_mg_l || "",
-    As_mg_l: row.as_mg_l || "",
-    Fluor_mg_l: row.fluor_mg_l || "",
-    NO3_mg_l: row.no3_mg_l || "",
-    OD_mg_l: row.od_mg_l || "",
-    Sat_O2_pct: row.sat_o2_pct || "",
-    Clorofila_ug_l: row.clorofila_ug_l || "",
-    Algas_BGA: row.algas_bga || "",
-    Cloro_libre_mg_l: row.cloro_libre_mg_l || "",
-    DBO_mg_l: row.dbo_mg_l || "",
-    DQO_mg_l: row.dqo_mg_l || "",
-    Detergentes_mg_l: row.detergentes_mg_l || "",
-    Grasas_Aceites_mg_l: row.grasas_aceites_mg_l || "",
-    Latitud: row.latitud || "",
-    Longitud: row.longitud || "",
-  });
-
-  // Trae los puntos cargados por el formulario desde la base de datos y los suma a los del CSV
-  const cargarPuntosDB = async (baseCSV: Punto[]) => {
-    try {
-      const res = await fetch("/api/puntos");
-      const data = await res.json();
-      if (data.ok) {
-        const puntosDB = (data.puntos as any[]).map(dbRowToPunto);
-        setPoints([...baseCSV, ...puntosDB]);
-      }
-    } catch {
-      // Si falla la base de datos, seguimos mostrando al menos los datos del CSV
-    }
-  };
-
-  // Recarga completa (CSV + base de datos) — se reutiliza después de cargar un dato nuevo desde el formulario
-  const recargarTodosLosPuntos = () => {
-    Papa.parse("/pozos.csv", {
-      download: true, header: true, skipEmptyLines: true,
-      complete: (r) => cargarPuntosDB(r.data as Punto[]),
-    });
-  };
-
   useEffect(() => {
     Papa.parse("/pozos.csv", {
       download: true, header: true, skipEmptyLines: true,
       complete: (r) => {
         const data = r.data as Punto[];
         setPoints(data);
-        cargarPuntosDB(data);
 
         // ── Detectar puntos nuevos ──
         const STORAGE_KEY_PUNTOS = "watergis_puntos_vistos";
@@ -1117,7 +775,6 @@ export default function Map() {
   const getMarkerIcon = (point: Punto) => {
     if(point.Tipo_Punto==="DIQUE") return blueIcon;
     if(point.Tipo_Punto==="RED") return violetIcon;
-    if(point.Tipo_Punto==="EFLUENTE") return greyIcon;
     if (selectedVariable==="As") {
       const as=parseAs(point.As_mg_l);
       if(as>0.05) return redIcon;
@@ -1565,10 +1222,10 @@ export default function Map() {
   // GENERAR PDF — DIQUES Y RED (mismo formato visual)
   // ======================================================
 
-  const generarPDFEspecial = (tipo: "DIQUE"|"RED"|"EFLUENTE") => {
+  const generarPDFEspecial = (tipo: "DIQUE"|"RED") => {
     setPdfLoading(true);
 
-    // Diques, Red y Efluentes usan los filtros de Departamento / Localidad ya elegidos en el panel lateral
+    // Diques y Red usan los filtros de Departamento / Localidad ya elegidos en el panel lateral
     const fDept = selectedFiltDept;
     const fLoc  = search || "TODAS";
 
@@ -1581,8 +1238,7 @@ export default function Map() {
       const lOk = fLoc==="TODAS"  || p.Localidad===fLoc;
       const diqueOk = tipo!=="DIQUE" || diqueSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===diqueSeleccionado;
       const redOk   = tipo!=="RED"   || redPuntoSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===redPuntoSeleccionado;
-      const efluOk  = tipo!=="EFLUENTE" || efluenteSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===efluenteSeleccionado;
-      return dOk && lOk && diqueOk && redOk && efluOk;
+      return dOk && lOk && diqueOk && redOk;
     });
 
     const fecha = new Date().toLocaleDateString("es-AR");
@@ -1590,24 +1246,19 @@ export default function Map() {
     const soloLocR       = fLoc!=="TODAS";
     const soloUnDique    = tipo==="DIQUE" && diqueSeleccionado!=="TODOS";
     const soloUnPuntoRed = tipo==="RED"   && redPuntoSeleccionado!=="TODOS";
-    const soloUnEfluente = tipo==="EFLUENTE" && efluenteSeleccionado!=="TODOS";
 
     const titulo2 = tipo==="DIQUE"
       ? (soloUnDique ? `${diqueSeleccionado.toUpperCase()} · ${base[0]?.Departamento?.toUpperCase()||""}` : `PROVINCIA DE CATAMARCA — TODOS LOS DIQUES`)
-      : tipo==="RED"
-      ? (soloUnPuntoRed
+      : (soloUnPuntoRed
         ? `${redPuntoSeleccionado.toUpperCase()} · ${base[0]?.Localidad?.toUpperCase()||""}`
         : soloLocR
         ? `${fLoc.toUpperCase()} · ${(fDept!=="TODOS"?fDept:base[0]?.Departamento||"").toUpperCase()}`
         : soloDeptoR ? `DEPARTAMENTO ${fDept.toUpperCase()}`
-        : `PROVINCIA DE CATAMARCA — TODOS LOS PUNTOS DE RED`)
-      : (soloUnEfluente ? `${efluenteSeleccionado.toUpperCase()} · ${base[0]?.Departamento?.toUpperCase()||""}` : `PROVINCIA DE CATAMARCA — TODOS LOS EFLUENTES`);
+        : `PROVINCIA DE CATAMARCA — TODOS LOS PUNTOS DE RED`);
 
     const nombreBase2 = tipo==="DIQUE"
       ? (soloUnDique ? diqueSeleccionado : "Todos_los_diques")
-      : tipo==="RED"
-      ? (soloUnPuntoRed ? redPuntoSeleccionado : soloLocR ? fLoc : soloDeptoR ? `Departamento_${fDept}` : "General")
-      : (soloUnEfluente ? efluenteSeleccionado : "Todos_los_efluentes");
+      : (soloUnPuntoRed ? redPuntoSeleccionado : soloLocR ? fLoc : soloDeptoR ? `Departamento_${fDept}` : "General");
 
     const num = (v:string|undefined) => parseFloat(String(v||"0").replace(",","."));
     const avg = (arr:Punto[], f:(p:Punto)=>number) => arr.length>0 ? arr.reduce((a,p)=>a+f(p),0)/arr.length : 0;
@@ -1855,7 +1506,8 @@ export default function Map() {
 <script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
 </body></html>`;
 
-    } else if(tipo==="RED") {
+    } else {
+      const avgTurb  = avg(base, p=>num(p.Turb_NTU));
       const avgCloro = avg(base, p=>num(p.Cloro_libre_mg_l));
       const avgTDS   = avg(base, p=>num(p.TDS_mg_l));
       const avgAs    = avg(base, p=>num(p.As_mg_l));
@@ -1995,170 +1647,6 @@ export default function Map() {
 </div>
 <script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
 </body></html>`;
-    } else {
-      // EFLUENTES — límites según Resolución 65/05, Secretaría del Agua y del Ambiente de Catamarca,
-      // Título C: vuelco a curso de agua superficial o conducto pluvial abierto.
-      const LIM_DBO  = 50;   // mg/L
-      const LIM_DQO  = 80;   // mg/L
-      const LIM_GYA  = 1;    // Aceites y grasas, mg/L
-      const LIM_DET  = 1;    // Detergentes sintéticos, mg/L
-      const LIM_TDS_EFL = 1500; // mg/L — referencia general (no está en la Res. 65/05)
-
-      const avgDBO = avg(base, p=>num(p.DBO_mg_l));
-      const avgDQO = avg(base, p=>num(p.DQO_mg_l));
-      const avgGyA = avg(base, p=>num(p.Grasas_Aceites_mg_l));
-      const avgDet = avg(base, p=>num(p.Detergentes_mg_l));
-      const avgTDS = avg(base, p=>num(p.TDS_mg_l));
-      const avgPh  = avg(base, p=>num(p.Ph));
-
-      const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
-
-      const dboOk    = base.filter(p=>num(p.DBO_mg_l)<=LIM_DBO).length;
-      const dboAlto  = base.filter(p=>num(p.DBO_mg_l)>LIM_DBO).length;
-
-      const dqoOk    = base.filter(p=>num(p.DQO_mg_l)<=LIM_DQO).length;
-      const dqoAlto  = base.filter(p=>num(p.DQO_mg_l)>LIM_DQO).length;
-
-      const gyaOk    = base.filter(p=>num(p.Grasas_Aceites_mg_l)<=LIM_GYA).length;
-      const gyaAlto  = base.filter(p=>num(p.Grasas_Aceites_mg_l)>LIM_GYA).length;
-
-      const estG     = (avgDBO>LIM_DBO||avgDQO>LIM_DQO||avgGyA>LIM_GYA||avgDet>LIM_DET) ? "FUERA DE NORMA" : "NORMAL";
-      const estClase = estG==="FUERA DE NORMA" ? "alerta" : "normal";
-
-      const puntosCriticos = base.filter(p=>
-          num(p.DBO_mg_l)>LIM_DBO ||
-          num(p.DQO_mg_l)>LIM_DQO ||
-          num(p.Grasas_Aceites_mg_l)>LIM_GYA ||
-          num(p.Detergentes_mg_l)>LIM_DET)
-        .sort((a,b)=>num(b.DBO_mg_l)-num(a.DBO_mg_l));
-
-      const efluentesUnicos = [...new Set(base.map(p=>p.PUNTO_DE_MUESTREO))];
-
-      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Efluentes — ${nombreBase2}</title>
-<style>${sharedStyle}</style></head>
-<body>
-<div class="page">
-
-  <div class="header-box">
-    <div class="header-top">
-      <div>
-        <h1>🏭 WATERGIS</h1>
-        <div class="subtitle">INFORME DE EFLUENTES — CONTROL DE VUELCOS</div>
-        <div class="subtitle"><strong>${titulo2}</strong></div>
-      </div>
-      <div style="text-align:right;font-size:10px;color:#64748b">
-        <div>Usuario: Nicolás Doria</div>
-        <div>Fecha: ${fecha}</div>
-        <div>Puntos de vuelco analizados: ${efluentesUnicos.length} (${base.length} campañas)</div>
-      </div>
-    </div>
-  </div>
-
-  <table>
-    <tbody>
-      ${tr(["Campañas realizadas", String(base.length)])}
-      ${tr(["Puntos de vuelco monitoreados", efluentesUnicos.join(", ")||"-"])}
-      ${tr(["Estado general", `<span class="estado-${estClase}">${estG==="FUERA DE NORMA"?"⛔ "+estG:"✅ "+estG}</span>`])}
-    </tbody>
-  </table>
-
-  <h2>INDICADORES PRINCIPALES</h2>
-  <table>
-    <thead>${tr(["Parámetro","Promedio","Límite de vuelco (Res. 65/05)","Estado"],true)}</thead>
-    <tbody>
-      ${tr(["DBO5 (Demanda Bioquímica de Oxígeno)", avgDBO.toFixed(1)+" mg/L", `${LIM_DBO} mg/L`, `<span class="${avgDBO>LIM_DBO?"supera":"ok"}">${avgDBO>LIM_DBO?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["DQO (Demanda Química de Oxígeno)", avgDQO.toFixed(1)+" mg/L", `${LIM_DQO} mg/L`, `<span class="${avgDQO>LIM_DQO?"supera":"ok"}">${avgDQO>LIM_DQO?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["Aceites y Grasas", avgGyA.toFixed(2)+" mg/L", `${LIM_GYA} mg/L`, `<span class="${avgGyA>LIM_GYA?"supera":"ok"}">${avgGyA>LIM_GYA?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["Detergentes sintéticos", avgDet.toFixed(2)+" mg/L", `${LIM_DET} mg/L`, `<span class="${avgDet>LIM_DET?"supera":"ok"}">${avgDet>LIM_DET?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", `${LIM_TDS_EFL} mg/L*`, `<span class="${avgTDS>LIM_TDS_EFL?"supera":"ok"}">${avgTDS>LIM_TDS_EFL?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["pH", avgPh.toFixed(1), "6.0 – 8.5", `<span class="${avgPh<6||avgPh>8.5?"supera":"ok"}">${avgPh<6||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
-    </tbody>
-  </table>
-
-  <h2>DISTRIBUCIÓN — DBO5</h2>
-  <div class="bar-row">
-    <div class="bar-label">Dentro de norma (≤ ${LIM_DBO} mg/L)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(dboOk)}%"></div></div>
-    <div class="bar-val" style="color:#22c55e">${dboOk} (${pct(dboOk)}%)</div>
-  </div>
-  <div class="bar-row">
-    <div class="bar-label">Fuera de norma (&gt; ${LIM_DBO} mg/L)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(dboAlto)}%"></div></div>
-    <div class="bar-val" style="color:#ef4444">${dboAlto} (${pct(dboAlto)}%)</div>
-  </div>
-
-  <h2>DISTRIBUCIÓN — DQO</h2>
-  <div class="bar-row">
-    <div class="bar-label">Dentro de norma (≤ ${LIM_DQO} mg/L)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(dqoOk)}%"></div></div>
-    <div class="bar-val" style="color:#22c55e">${dqoOk} (${pct(dqoOk)}%)</div>
-  </div>
-  <div class="bar-row">
-    <div class="bar-label">Fuera de norma (&gt; ${LIM_DQO} mg/L)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(dqoAlto)}%"></div></div>
-    <div class="bar-val" style="color:#ef4444">${dqoAlto} (${pct(dqoAlto)}%)</div>
-  </div>
-
-  <h2>DISTRIBUCIÓN — ACEITES Y GRASAS</h2>
-  <div class="bar-row">
-    <div class="bar-label">Dentro de norma (≤ ${LIM_GYA} mg/L)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(gyaOk)}%"></div></div>
-    <div class="bar-val" style="color:#22c55e">${gyaOk} (${pct(gyaOk)}%)</div>
-  </div>
-  <div class="bar-row">
-    <div class="bar-label">Fuera de norma (&gt; ${LIM_GYA} mg/L)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(gyaAlto)}%"></div></div>
-    <div class="bar-val" style="color:#ef4444">${gyaAlto} (${pct(gyaAlto)}%)</div>
-  </div>
-
-  ${puntosCriticos.length>0?`
-  <h3>Puntos críticos — Efluentes fuera de norma</h3>
-  <table>
-    <thead>${tr(["Punto de vuelco","Departamento","DBO5 (mg/L)","DQO (mg/L)","Grasas y Aceites (mg/L)","Detergentes (mg/L)","Estado"],true)}</thead>
-    <tbody>
-      ${puntosCriticos.map(p=>tr([
-        p.PUNTO_DE_MUESTREO||"-", p.Departamento||"-",
-        num(p.DBO_mg_l).toFixed(1), num(p.DQO_mg_l).toFixed(1), num(p.Grasas_Aceites_mg_l).toFixed(2), num(p.Detergentes_mg_l).toFixed(2),
-        '<span class="supera">⛔ Fuera de norma</span>'
-      ])).join("")}
-    </tbody>
-  </table>`:""}
-
-  <h2>OBSERVACIONES AUTOMÁTICAS</h2>
-  <ul style="padding-left:16px;line-height:1.8">
-    <li>La DBO5 y la DQO indican la carga de materia orgánica del efluente; valores elevados consumen el oxígeno disuelto del cuerpo receptor y afectan la vida acuática.</li>
-    <li>Los aceites y grasas forman películas superficiales que dificultan la transferencia de oxígeno al agua.</li>
-    <li>Los detergentes sintéticos por encima del límite pueden generar espumas y afectar la biodegradación natural del cuerpo receptor.</li>
-    <li>Se recomienda verificar el sistema de tratamiento previo al vuelco en los puntos que superen los límites establecidos.</li>
-  </ul>
-
-  <div class="caa-box">
-    <h2>LÍMITES DE VUELCO — RESOLUCIÓN 65/05 (Catamarca)</h2>
-    <table>
-      <thead>${tr(["Parámetro","Límite de vuelco","Norma de referencia"],true)}</thead>
-      <tbody>
-        ${tr(["DBO5 (20°C, sin nitrificación)", "&lt; 50 mg/L", "Res. 65/05 — Título C, Art. 21"])}
-        ${tr(["DQO (dicromato de potasio)", "&lt; 80 mg/L", "Res. 65/05 — Título C, Art. 22"])}
-        ${tr(["Aceites y Grasas", "&lt; 1 mg/L", "Res. 65/05 — Título C, punto 3"])}
-        ${tr(["Detergentes sintéticos", "&lt; 1 mg/L", "Res. 65/05 — Título C, punto 14"])}
-        ${tr(["pH", "6.0 – 8.5", "Res. 65/05 — Título C, punto 2"])}
-        ${tr(["TDS", "1500 mg/L*", "Referencia general (no regulado por Res. 65/05)"])}
-      </tbody>
-    </table>
-    <p class="nota">
-      Fuente: Resolución 65/05, Secretaría del Agua y del Ambiente de Catamarca — Reglamento para el Control del Vertido de Líquidos Residuales, Título C
-      (vuelco a curso de agua superficial o conducto pluvial abierto). * El límite de TDS no está regulado específicamente por esta resolución;
-      se incluye como referencia general de calidad de agua.
-    </p>
-  </div>
-
-  <div class="footer">
-    Sistema WATERGIS — Provincia de Catamarca · WGS 84 / EPSG:4326<br>
-    Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
-  </div>
-</div>
-<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
-</body></html>`;
     }
 
     const ventana = window.open("","_blank","width=900,height=700");
@@ -2180,13 +1668,6 @@ export default function Map() {
 
       {/* ===== PANTALLA DE LOGIN ===== */}
       {loginVisible && <LoginScreen onLogin={handleLogin} />}
-      {showCargaForm && esAutenticado && (
-        <CargaDatosForm
-          usuario={sesion!.user}
-          onClose={()=>setShowCargaForm(false)}
-          onGuardado={recargarTodosLosPuntos}
-        />
-      )}
 
       {/* ===== POP-UP NUEVOS PUNTOS ===== */}
       {popupNuevos.visible && !loginVisible && (
@@ -2561,16 +2042,6 @@ export default function Map() {
           )}
         </div>
 
-        {/* ── BOTÓN CARGAR DATOS ── */}
-        {esAutenticado && (
-          <button
-            onClick={()=>setShowCargaForm(true)}
-            className="flex items-center gap-2 rounded-lg border border-cyan-600 bg-cyan-500/10 px-3 py-1 text-sm text-cyan-300 hover:bg-cyan-500/20 transition-colors mr-2"
-          >
-            ➕ Cargar datos
-          </button>
-        )}
-
         {/* ── MENÚ USUARIO ── */}
         <div className="relative flex items-center gap-2">
           <button
@@ -2794,11 +2265,10 @@ export default function Map() {
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
               Tipo de punto
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               {([
-                {key:"DIQUE",    label:"Diques",    color:"border-blue-500 text-blue-300"},
-                {key:"RED",      label:"Red",       color:"border-purple-500 text-purple-300"},
-                {key:"EFLUENTE", label:"Efluentes", color:"border-slate-400 text-slate-300"},
+                {key:"DIQUE", label:"Diques", color:"border-blue-500 text-blue-300"},
+                {key:"RED",   label:"Red",    color:"border-purple-500 text-purple-300"},
               ] as {key:string;label:string;color:string}[]).map(opt=>(
                 <button
                   key={opt.key}
@@ -2854,40 +2324,19 @@ export default function Map() {
               </div>
             )}
 
-            {/* Selector de efluente específico — solo si tipoPunto es EFLUENTE */}
-            {tipoPunto==="EFLUENTE" && (
-              <div className="mt-2">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1 block">
-                  Punto de vuelco
-                </label>
-                <select
-                  value={efluenteSeleccionado}
-                  onChange={e=>setEfluenteSeleccionado(e.target.value)}
-                  className="w-full rounded-xl border border-slate-500/50 bg-slate-950 p-2 text-xs text-white focus:outline-none focus:border-slate-400"
-                >
-                  <option value="TODOS">Todos los efluentes</option>
-                  {efluentesUnicosLista.map(e=><option key={e} value={e}>{e}</option>)}
-                </select>
-              </div>
-            )}
-
-            {/* Botón generar informe específico de Diques, Red o Efluentes */}
-            {(tipoPunto==="DIQUE"||tipoPunto==="RED"||tipoPunto==="EFLUENTE") && esAutenticado && (
+            {/* Botón generar informe específico de Diques o Red */}
+            {(tipoPunto==="DIQUE"||tipoPunto==="RED") && esAutenticado && (
               <button
-                onClick={()=>{ setInfTipoPunto(tipoPunto); generarPDFEspecial(tipoPunto as "DIQUE"|"RED"|"EFLUENTE"); }}
+                onClick={()=>{ setInfTipoPunto(tipoPunto); generarPDFEspecial(tipoPunto as "DIQUE"|"RED"); }}
                 className={`mt-2 w-full rounded-lg border py-2 text-xs font-bold transition-all ${
                   tipoPunto==="DIQUE"
                     ? "border-blue-500 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"
-                    : tipoPunto==="RED"
-                    ? "border-purple-500 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
-                    : "border-slate-400 bg-slate-500/10 text-slate-300 hover:bg-slate-500/20"
+                    : "border-purple-500 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
                 }`}
               >
                 📄 Generar informe de {tipoPunto==="DIQUE"
                   ? (diqueSeleccionado==="TODOS" ? "Todos los Diques" : diqueSeleccionado)
-                  : tipoPunto==="RED"
-                  ? (redPuntoSeleccionado==="TODOS" ? (search ? `Red — ${search}` : "Red") : redPuntoSeleccionado)
-                  : (efluenteSeleccionado==="TODOS" ? "Todos los Efluentes" : efluenteSeleccionado)}
+                  : (redPuntoSeleccionado==="TODOS" ? (search ? `Red — ${search}` : "Red") : redPuntoSeleccionado)}
               </button>
             )}
           </div>
@@ -3061,10 +2510,6 @@ export default function Map() {
             Cloro:parseFloat(String(c.Cloro_libre_mg_l||"0").replace(",",".")),
             OD:parseFloat(String(c.OD_mg_l||"0").replace(",",".")),
             SatO2:parseFloat(String(c.Sat_O2_pct||"0").replace(",",".")),
-            DBO:parseFloat(String(c.DBO_mg_l||"0").replace(",",".")),
-            DQO:parseFloat(String(c.DQO_mg_l||"0").replace(",",".")),
-            Detergentes:parseFloat(String(c.Detergentes_mg_l||"0").replace(",",".")),
-            GrasasAceites:parseFloat(String(c.Grasas_Aceites_mg_l||"0").replace(",",".")),
           }));
 
           // Cards del popup — dependen del tipo de punto
@@ -3084,13 +2529,6 @@ export default function Map() {
             {key:"Cloro",label:"Cloro libre",    val:point.Cloro_libre_mg_l||"-", color:"#34d399"},
             {key:"TDS",  label:"TDS",            val:point.TDS_mg_l||"-",         color:"#f59e0b"},
           ];
-          const efluenteCards = [
-            {key:"DBO",           label:"DBO5",            val:point.DBO_mg_l||"-",            color:"#f97316"},
-            {key:"DQO",           label:"DQO",             val:point.DQO_mg_l||"-",            color:"#fb923c"},
-            {key:"TDS",           label:"TDS",             val:point.TDS_mg_l||"-",            color:"#f59e0b"},
-            {key:"Detergentes",   label:"Detergentes",     val:point.Detergentes_mg_l||"-",     color:"#38bdf8"},
-            {key:"GrasasAceites", label:"Grasas y Aceites",val:point.Grasas_Aceites_mg_l||"-",  color:"#a3a3a3"},
-          ];
           const pozoCards = [
             {key:"Fluor",label:"Flúor", val:point.Fluor_mg_l, color:"#34d399"},
             {key:"NO3",  label:"NO3",   val:point.NO3_mg_l,   color:"#f87171"},
@@ -3099,8 +2537,6 @@ export default function Map() {
             ? diqueCards
             : point.Tipo_Punto==="RED"
             ? redCards
-            : point.Tipo_Punto==="EFLUENTE"
-            ? efluenteCards
             : [...baseCards, ...pozoCards];
 
           const popupKey = `${point.PUNTO_DE_MUESTREO}_${point.Localidad}`;
