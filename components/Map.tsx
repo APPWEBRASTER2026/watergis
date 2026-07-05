@@ -422,7 +422,10 @@ const USUARIOS: Record<string, { password: string; nombre: string }> = {
 };
 const STORAGE_KEY = "watergis_session";
 
-function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => void }) {
+// Íconos de avatar disponibles — temática de agua/monitoreo ambiental
+const AVATARES = ["💧","🌊","🏞️","💦","🚰","🏔️","🐟","🌿","⚗️","🧪","🔬","📡"];
+
+function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avatar?: string) => void }) {
   const [modo, setModo] = useState<"login"|"registro">("login");
 
   // ── Campos de login ──
@@ -440,6 +443,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
   const [regLugarTrabajo, setRegLugarTrabajo] = useState("");
   const [regProvincia, setRegProvincia] = useState("Catamarca");
   const [regLocalidad, setRegLocalidad] = useState("");
+  const [regAvatar, setRegAvatar] = useState(AVATARES[0]);
   const [regPassword, setRegPassword] = useState("");
   const [regPassword2, setRegPassword2] = useState("");
   const [regError, setRegError]       = useState("");
@@ -466,7 +470,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
       });
       const data = await res.json();
       if (data.ok) {
-        onLogin(data.usuario, data.nombre);
+        onLogin(data.usuario, data.nombre, data.avatar);
       } else {
         setError(data.error || "Usuario o contraseña incorrectos.");
       }
@@ -503,12 +507,13 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
           lugar_trabajo: regLugarTrabajo.trim(),
           provincia: regProvincia.trim(),
           localidad: regLocalidad.trim(),
+          avatar: regAvatar,
         }),
       });
       const data = await res.json();
       if (data.ok) {
         setRegOk("¡Cuenta creada! Iniciando sesión...");
-        setTimeout(()=>onLogin(data.usuario, data.nombre), 800);
+        setTimeout(()=>onLogin(data.usuario, data.nombre, regAvatar), 800);
       } else {
         setRegError(data.error || "No se pudo crear la cuenta.");
       }
@@ -597,6 +602,23 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
               </div>
             </div>
             <div className="mb-4">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Elegí un ícono para tu perfil</label>
+              <div className="grid grid-cols-6 gap-2">
+                {AVATARES.map(av => (
+                  <button
+                    key={av}
+                    type="button"
+                    onClick={()=>setRegAvatar(av)}
+                    className={`aspect-square rounded-xl border text-xl flex items-center justify-center transition-all ${
+                      regAvatar===av ? "border-cyan-500 bg-cyan-500/20 scale-105" : "border-slate-700 bg-slate-900 hover:border-slate-500"
+                    }`}
+                  >
+                    {av}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mb-4">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Contraseña</label>
               <input type="password" value={regPassword} onChange={e=>setRegPassword(e.target.value)} placeholder="Mínimo 6 caracteres" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
             </div>
@@ -647,30 +669,43 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
   const set = (campo: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(prev => ({ ...prev, [campo]: e.target.value }));
 
-  // Qué parámetros mostrar según el tipo de punto elegido — evita llenar campos que no aplican
+  // Categoría visible al usuario (agrupa Pozo+Red+Fuente bajo "Agua potable")
+  const [categoria, setCategoria] = useState<"AGUA"|"DIQUE"|"EFLUENTE">("AGUA");
+
+  // Al elegir categoría, derivamos el tipo_punto real que se guarda en la base
+  const elegirCategoria = (cat: "AGUA"|"DIQUE"|"EFLUENTE") => {
+    setCategoria(cat);
+    if (cat === "DIQUE") setForm(prev => ({ ...prev, tipo_punto: "DIQUE" }));
+    else if (cat === "EFLUENTE") setForm(prev => ({ ...prev, tipo_punto: "EFLUENTE" }));
+    else setForm(prev => ({ ...prev, tipo_punto: prev.fuente === "RED" ? "RED" : "POZO" }));
+  };
+
+  // Dentro de "Agua potable", el botón de Fuente también decide si es POZO o RED
+  const elegirFuente = (f: string) => {
+    setForm(prev => ({ ...prev, fuente: f, tipo_punto: f === "RED" ? "RED" : "POZO" }));
+  };
+
+  // Qué parámetros mostrar según la categoría elegida — evita llenar campos que no aplican
   const gruposParametros: Record<string, {key:string; label:string; unidad?:string}[]> = {
-    POZO: [
-      {key:"ph", label:"pH"}, {key:"t_c", label:"Temperatura", unidad:"°C"},
+    AGUA: [
       {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"turb_ntu", label:"Turbidez", unidad:"NTU"},
-      {key:"salinidad_mg_l", label:"Salinidad", unidad:"mg/L"}, {key:"as_mg_l", label:"Arsénico", unidad:"mg/L"},
-      {key:"fluor_mg_l", label:"Flúor", unidad:"mg/L"}, {key:"no3_mg_l", label:"Nitratos (NO3)", unidad:"mg/L"},
+      {key:"cloro_libre_mg_l", label:"Cloro libre", unidad:"mg/L"}, {key:"as_mg_l", label:"Arsénico (As)", unidad:"mg/L"},
+      {key:"no3_mg_l", label:"Nitratos (NO3)", unidad:"mg/L"}, {key:"fluor_mg_l", label:"Flúor", unidad:"mg/L"},
     ],
     DIQUE: [
       {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"turb_ntu", label:"Turbidez", unidad:"NTU"},
       {key:"od_mg_l", label:"Oxígeno Disuelto (OD)", unidad:"mg/L"}, {key:"sat_o2_pct", label:"Saturación de O₂", unidad:"%"},
       {key:"clorofila_ug_l", label:"Clorofila-a", unidad:"µg/L"}, {key:"algas_bga", label:"Algas BGA", unidad:"cel/mL"},
     ],
-    RED: [
-      {key:"turb_ntu", label:"Turbidez", unidad:"NTU"}, {key:"cloro_libre_mg_l", label:"Cloro libre", unidad:"mg/L"},
-      {key:"tds_mg_l", label:"TDS", unidad:"mg/L"},
-    ],
     EFLUENTE: [
-      {key:"dbo_mg_l", label:"DBO5", unidad:"mg/L"}, {key:"dqo_mg_l", label:"DQO", unidad:"mg/L"},
-      {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"detergentes_mg_l", label:"Detergentes", unidad:"mg/L"},
-      {key:"grasas_aceites_mg_l", label:"Grasas y Aceites", unidad:"mg/L"}, {key:"ph", label:"pH"},
+      {key:"od_mg_l", label:"Oxígeno Disuelto (OD)", unidad:"mg/L"}, {key:"sat_o2_pct", label:"Saturación de O₂", unidad:"%"},
+      {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"dbo_mg_l", label:"DBO5", unidad:"mg/L"},
+      {key:"dqo_mg_l", label:"DQO", unidad:"mg/L"}, {key:"detergentes_mg_l", label:"Detergentes", unidad:"mg/L"},
+      {key:"ph", label:"pH"}, {key:"t_c", label:"Temperatura", unidad:"°C"},
+      {key:"grasas_aceites_mg_l", label:"Grasas y Aceites", unidad:"mg/L"},
     ],
   };
-  const parametrosActivos = gruposParametros[form.tipo_punto] || gruposParametros.POZO;
+  const parametrosActivos = gruposParametros[categoria] || gruposParametros.AGUA;
 
   const handleGuardar = async () => {
     setError(""); setOk(false);
@@ -715,40 +750,53 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
         </div>
 
         <div className="p-5">
-          {/* Tipo de punto — define qué parámetros se piden más abajo */}
+          {/* Categoría — define qué parámetros se piden más abajo */}
           <div className="mb-4">
-            <label className={labelClass}>Tipo de punto *</label>
-            <div className="grid grid-cols-4 gap-2">
-              {["POZO","DIQUE","RED","EFLUENTE"].map(tp => (
+            <label className={labelClass}>¿Qué datos querés cargar? *</label>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                {key:"AGUA",     label:"Agua Potable", emoji:"💧"},
+                {key:"DIQUE",    label:"Diques",       emoji:"🌊"},
+                {key:"EFLUENTE", label:"Efluentes",    emoji:"🏭"},
+              ] as const).map(cat => (
                 <button
-                  key={tp}
-                  onClick={()=>setForm(prev=>({...prev, tipo_punto: tp}))}
-                  className={`rounded-lg border py-2 text-xs font-bold transition-colors ${
-                    form.tipo_punto===tp ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
+                  key={cat.key}
+                  onClick={()=>elegirCategoria(cat.key)}
+                  className={`rounded-xl border py-3 text-xs font-bold transition-colors flex flex-col items-center gap-1 ${
+                    categoria===cat.key ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
                   }`}
                 >
-                  {tp==="POZO"?"🚰 Pozo":tp==="DIQUE"?"🌊 Dique":tp==="RED"?"🚿 Red":"🏭 Efluente"}
+                  <span className="text-lg">{cat.emoji}</span>
+                  {cat.label}
                 </button>
               ))}
             </div>
+            {categoria==="AGUA" && (
+              <p className="text-[10px] text-slate-500 mt-2">
+                Incluye pozos, red de distribución y agua superficial o subterránea de consumo.
+              </p>
+            )}
           </div>
 
-          <div className="mb-4">
-            <label className={labelClass}>Fuente *</label>
-            <div className="grid grid-cols-3 gap-2">
-              {["SUBTERRANEA","SUPERFICIAL","MEZCLA"].map(f => (
-                <button
-                  key={f}
-                  onClick={()=>setForm(prev=>({...prev, fuente: f}))}
-                  className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
-                    form.fuente===f ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
-                  }`}
-                >
-                  {f==="SUBTERRANEA"?"Subterránea":f==="SUPERFICIAL"?"Superficial":"Mezcla"}
-                </button>
-              ))}
+          {/* Fuente — solo aplica a Agua Potable; acá también se elige si es un punto de Red */}
+          {categoria === "AGUA" && (
+            <div className="mb-4">
+              <label className={labelClass}>Fuente *</label>
+              <div className="grid grid-cols-4 gap-2">
+                {["SUBTERRANEA","SUPERFICIAL","MEZCLA","RED"].map(f => (
+                  <button
+                    key={f}
+                    onClick={()=>elegirFuente(f)}
+                    className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                      form.fuente===f ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
+                    }`}
+                  >
+                    {f==="SUBTERRANEA"?"Subterránea":f==="SUPERFICIAL"?"Superficial":f==="MEZCLA"?"Mezcla":"🚿 Red"}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">Ubicación</h3>
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -766,7 +814,7 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
           </div>
 
           <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">
-            Parámetros — {form.tipo_punto==="POZO"?"Pozo":form.tipo_punto==="DIQUE"?"Dique":form.tipo_punto==="RED"?"Red":"Efluente"}
+            Parámetros — {categoria==="AGUA"?"Agua Potable":categoria==="DIQUE"?"Diques":"Efluentes"}
           </h3>
           <div className="grid grid-cols-3 gap-3 mb-3">
             {parametrosActivos.map(p => (
@@ -794,7 +842,7 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
 
 export default function Map() {
   // ── AUTH ──
-  const [sesion, setSesion] = useState<{user:string;nombre:string}|null>(null);
+  const [sesion, setSesion] = useState<{user:string;nombre:string;avatar?:string}|null>(null);
   const [loginVisible, setLoginVisible] = useState(true);
   const esAutenticado = sesion !== null && sesion.user !== "publico";
 
@@ -805,8 +853,8 @@ export default function Map() {
     } catch {}
   },[]);
 
-  const handleLogin=(user:string,nombre:string)=>{
-    const s={user,nombre}; setSesion(s); setLoginVisible(false);
+  const handleLogin=(user:string,nombre:string,avatar?:string)=>{
+    const s={user,nombre,avatar}; setSesion(s); setLoginVisible(false);
     if(user!=="publico"){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); }catch{} }
   };
 
@@ -820,6 +868,70 @@ export default function Map() {
   const [search, setSearch]             = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showPerfil, setShowPerfil]     = useState(false);
+  const [showCambiarPass, setShowCambiarPass] = useState(false);
+  const [passActual, setPassActual] = useState("");
+  const [passNueva, setPassNueva] = useState("");
+  const [passNueva2, setPassNueva2] = useState("");
+  const [passError, setPassError] = useState("");
+  const [passOk, setPassOk] = useState(false);
+  const [passLoading, setPassLoading] = useState(false);
+
+  const [showCambiarFoto, setShowCambiarFoto] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+  const [fotoLoading, setFotoLoading] = useState(false);
+
+  const handleCambiarPassword = async () => {
+    setPassError(""); setPassOk(false);
+    if (!passActual || !passNueva) { setPassError("Completá los dos campos."); return; }
+    if (passNueva !== passNueva2) { setPassError("Las contraseñas nuevas no coinciden."); return; }
+    if (passNueva.length < 6) { setPassError("La nueva contraseña debe tener al menos 6 caracteres."); return; }
+    setPassLoading(true);
+    try {
+      const res = await fetch("/api/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario: sesion?.user, passwordActual: passActual, passwordNueva: passNueva }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPassOk(true);
+        setPassActual(""); setPassNueva(""); setPassNueva2("");
+        setTimeout(()=>{ setShowCambiarPass(false); setPassOk(false); }, 1500);
+      } else {
+        setPassError(data.error || "No se pudo cambiar la contraseña.");
+      }
+    } catch {
+      setPassError("No se pudo conectar con el servidor.");
+    } finally {
+      setPassLoading(false);
+    }
+  };
+
+  const handleCambiarAvatar = async (nuevoAvatar: string) => {
+    setFotoError(""); setFotoLoading(true);
+    try {
+      const res = await fetch("/api/change-avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario: sesion?.user, avatar: nuevoAvatar }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSesion(prev => {
+          const nuevo = prev ? { ...prev, avatar: nuevoAvatar } : prev;
+          if (nuevo) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevo)); } catch {} }
+          return nuevo;
+        });
+        setShowCambiarFoto(false);
+      } else {
+        setFotoError(data.error || "No se pudo cambiar el ícono.");
+      }
+    } catch {
+      setFotoError("No se pudo conectar con el servidor.");
+    } finally {
+      setFotoLoading(false);
+    }
+  };
   const [showAjustes, setShowAjustes]   = useState(false);
   const [showCargaForm, setShowCargaForm] = useState(false);
   const [selectedVariable, setSelectedVariable] = useState("As");
@@ -2603,7 +2715,7 @@ export default function Map() {
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-1 text-sm hover:bg-slate-800"
           >
-            {esAutenticado ? "👤" : "🌐"} <span>{sesion?.nombre ?? "Visitante"}</span> ▼
+            {esAutenticado ? (sesion?.avatar || "👤") : "🌐"} <span>{sesion?.nombre ?? "Visitante"}</span> ▼
           </button>
 
           {userMenuOpen && (
@@ -2635,12 +2747,60 @@ export default function Map() {
                 <h3 className="font-bold text-cyan-400">{t.miPerfil}</h3>
                 <button onClick={()=>setShowPerfil(false)} className="text-slate-400 hover:text-white text-lg leading-none">✕</button>
               </div>
-              <p className="text-xs text-slate-400 mb-1">{t.nombre}</p>
-              <p className="mb-3 font-semibold">Nicolás Doria</p>
-              <p className="text-xs text-slate-400 mb-1">{t.ultimoAcceso}</p>
-              <p className="mb-4 font-semibold">20/06/2026</p>
-              <button className="w-full rounded-xl border border-cyan-500 p-3 mb-2 text-sm font-bold text-cyan-300 hover:bg-cyan-500/10">{t.cambiarContrasena}</button>
-              <button className="w-full rounded-xl border border-cyan-500 p-3 text-sm font-bold text-cyan-300 hover:bg-cyan-500/10">{t.cambiarFoto}</button>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 border border-slate-700 text-2xl">
+                  {sesion?.avatar || "👤"}
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">{t.nombre}</p>
+                  <p className="font-semibold">{sesion?.nombre ?? "Visitante"}</p>
+                </div>
+              </div>
+              <button onClick={()=>{setShowCambiarPass(v=>!v);setShowCambiarFoto(false);}} className="w-full rounded-xl border border-cyan-500 p-3 mb-2 text-sm font-bold text-cyan-300 hover:bg-cyan-500/10">{t.cambiarContrasena}</button>
+              <button onClick={()=>{setShowCambiarFoto(v=>!v);setShowCambiarPass(false);}} className="w-full rounded-xl border border-cyan-500 p-3 text-sm font-bold text-cyan-300 hover:bg-cyan-500/10">{t.cambiarFoto}</button>
+
+              {/* SUB-PANEL: Cambiar contraseña */}
+              {showCambiarPass && (
+                <div className="mt-4 pt-4 border-t border-slate-800">
+                  <input type="password" value={passActual} onChange={e=>setPassActual(e.target.value)} placeholder="Contraseña actual"
+                    className="w-full mb-2 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"/>
+                  <input type="password" value={passNueva} onChange={e=>setPassNueva(e.target.value)} placeholder="Nueva contraseña"
+                    className="w-full mb-2 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"/>
+                  <input type="password" value={passNueva2} onChange={e=>setPassNueva2(e.target.value)} placeholder="Repetir nueva contraseña"
+                    className="w-full mb-3 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"/>
+                  {passError && <p className="text-xs text-red-400 mb-2 text-center">{passError}</p>}
+                  {passOk && <p className="text-xs text-green-400 mb-2 text-center">✅ Contraseña actualizada</p>}
+                  <button onClick={handleCambiarPassword} disabled={passLoading}
+                    className="w-full rounded-xl bg-cyan-500 p-2.5 text-sm font-bold text-black hover:bg-cyan-400 disabled:opacity-50">
+                    {passLoading?"Guardando...":"Confirmar cambio"}
+                  </button>
+                  <p className="text-[10px] text-slate-500 mt-2 text-center">
+                    Si tu cuenta es una de las 3 originales del sistema (no registrada por vos), primero registrate como usuario nuevo para poder cambiar la contraseña.
+                  </p>
+                </div>
+              )}
+
+              {/* SUB-PANEL: Cambiar foto/ícono */}
+              {showCambiarFoto && (
+                <div className="mt-4 pt-4 border-t border-slate-800">
+                  <p className="text-xs text-slate-400 mb-2">Elegí tu nuevo ícono</p>
+                  <div className="grid grid-cols-6 gap-2 mb-2">
+                    {AVATARES.map(av => (
+                      <button
+                        key={av}
+                        onClick={()=>handleCambiarAvatar(av)}
+                        disabled={fotoLoading}
+                        className={`aspect-square rounded-lg border text-lg flex items-center justify-center transition-all disabled:opacity-50 ${
+                          sesion?.avatar===av ? "border-cyan-500 bg-cyan-500/20" : "border-slate-700 bg-slate-900 hover:border-slate-500"
+                        }`}
+                      >
+                        {av}
+                      </button>
+                    ))}
+                  </div>
+                  {fotoError && <p className="text-xs text-red-400 text-center">{fotoError}</p>}
+                </div>
+              )}
             </div>
           )}
 

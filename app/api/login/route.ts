@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const usuarioLimpio = String(usuario).trim().toLowerCase();
 
     const result = await pool.query(
-      "SELECT usuario, nombre, password_hash FROM usuarios WHERE usuario = $1",
+      "SELECT usuario, nombre, password_hash, avatar FROM usuarios WHERE usuario = $1",
       [usuarioLimpio]
     );
 
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, usuario: row.usuario, nombre: row.nombre });
+    return NextResponse.json({ ok: true, usuario: row.usuario, nombre: row.nombre, avatar: row.avatar || "💧" });
   } catch (err) {
     console.error("Error en /api/login:", err);
     return NextResponse.json(

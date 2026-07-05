@@ -4,7 +4,7 @@ import { pool } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
-    const { usuario, password, nombre, email, dni, profesion, lugar_trabajo, provincia, localidad } = await req.json();
+    const { usuario, password, nombre, email, dni, profesion, lugar_trabajo, provincia, localidad, avatar } = await req.json();
 
     // Validaciones básicas
     if (!usuario || !password || !nombre) {
@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
 
     await pool.query(
       `INSERT INTO usuarios
-        (usuario, nombre, email, password_hash, dni, profesion, lugar_trabajo, provincia, localidad)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        (usuario, nombre, email, password_hash, dni, profesion, lugar_trabajo, provincia, localidad, avatar)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         usuarioLimpio,
         String(nombre).trim(),
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
         lugar_trabajo ? String(lugar_trabajo).trim() : null,
         provincia ? String(provincia).trim() : null,
         localidad ? String(localidad).trim() : null,
+        avatar ? String(avatar).trim() : "💧",
       ]
     );
 
