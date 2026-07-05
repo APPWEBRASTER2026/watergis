@@ -4,7 +4,7 @@ import { pool } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
-    const { usuario, password, nombre, email } = await req.json();
+    const { usuario, password, nombre, email, dni, profesion, lugar_trabajo, provincia, localidad } = await req.json();
 
     // Validaciones básicas
     if (!usuario || !password || !nombre) {
@@ -39,8 +39,20 @@ export async function POST(req: NextRequest) {
     const hash = await bcrypt.hash(String(password), 10);
 
     await pool.query(
-      "INSERT INTO usuarios (usuario, nombre, email, password_hash) VALUES ($1, $2, $3, $4)",
-      [usuarioLimpio, String(nombre).trim(), email ? String(email).trim() : null, hash]
+      `INSERT INTO usuarios
+        (usuario, nombre, email, password_hash, dni, profesion, lugar_trabajo, provincia, localidad)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        usuarioLimpio,
+        String(nombre).trim(),
+        email ? String(email).trim() : null,
+        hash,
+        dni ? String(dni).trim() : null,
+        profesion ? String(profesion).trim() : null,
+        lugar_trabajo ? String(lugar_trabajo).trim() : null,
+        provincia ? String(provincia).trim() : null,
+        localidad ? String(localidad).trim() : null,
+      ]
     );
 
     return NextResponse.json({ ok: true, usuario: usuarioLimpio, nombre: String(nombre).trim() });
@@ -52,3 +64,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

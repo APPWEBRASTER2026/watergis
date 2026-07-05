@@ -435,6 +435,11 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
   const [regNombre, setRegNombre]     = useState("");
   const [regUsuario, setRegUsuario]   = useState("");
   const [regEmail, setRegEmail]       = useState("");
+  const [regDni, setRegDni]           = useState("");
+  const [regProfesion, setRegProfesion] = useState("");
+  const [regLugarTrabajo, setRegLugarTrabajo] = useState("");
+  const [regProvincia, setRegProvincia] = useState("Catamarca");
+  const [regLocalidad, setRegLocalidad] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regPassword2, setRegPassword2] = useState("");
   const [regError, setRegError]       = useState("");
@@ -493,6 +498,11 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
           password: regPassword,
           nombre: regNombre.trim(),
           email: regEmail.trim(),
+          dni: regDni.trim(),
+          profesion: regProfesion.trim(),
+          lugar_trabajo: regLugarTrabajo.trim(),
+          provincia: regProvincia.trim(),
+          localidad: regLocalidad.trim(),
         }),
       });
       const data = await res.json();
@@ -510,12 +520,12 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
   };
 
   return (
-    <div className="fixed inset-0 bg-[#020617] flex items-center justify-center z-[99999]">
+    <div className="fixed inset-0 bg-[#020617] flex items-center justify-center z-[99999] overflow-y-auto py-8">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-100px] left-[-100px] w-[400px] h-[400px] rounded-full bg-cyan-500/5 blur-3xl" />
         <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] rounded-full bg-blue-500/5 blur-3xl" />
       </div>
-      <div className="relative w-full max-w-md mx-4">
+      <div className="relative w-full max-w-md mx-4 my-auto">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 mb-4">
             <span className="text-3xl">💧</span>
@@ -561,6 +571,30 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string) => v
             <div className="mb-4">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Email (opcional)</label>
               <input type="email" value={regEmail} onChange={e=>setRegEmail(e.target.value)} placeholder="juan@ejemplo.com" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+            </div>
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">DNI</label>
+                <input type="text" value={regDni} onChange={e=>setRegDni(e.target.value)} placeholder="30123456" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Profesión</label>
+                <input type="text" value={regProfesion} onChange={e=>setRegProfesion(e.target.value)} placeholder="Ing. Ambiental" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Lugar de trabajo</label>
+              <input type="text" value={regLugarTrabajo} onChange={e=>setRegLugarTrabajo(e.target.value)} placeholder="Ej: Secretaría del Agua y Ambiente" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+            </div>
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Provincia</label>
+                <input type="text" value={regProvincia} onChange={e=>setRegProvincia(e.target.value)} placeholder="Catamarca" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Localidad</label>
+                <input type="text" value={regLocalidad} onChange={e=>setRegLocalidad(e.target.value)} placeholder="San Fernando" className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"/>
+              </div>
             </div>
             <div className="mb-4">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Contraseña</label>
