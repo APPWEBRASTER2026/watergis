@@ -705,7 +705,8 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
       {key:"grasas_aceites_mg_l", label:"Grasas y Aceites", unidad:"mg/L"},
     ],
   };
-  const parametrosActivos = gruposParametros[categoria] || gruposParametros.AGUA;
+  const parametrosActivos = (gruposParametros[categoria] || gruposParametros.AGUA)
+    .filter(p => !(categoria === "AGUA" && p.key === "cloro_libre_mg_l" && form.fuente !== "RED"));
 
   const handleGuardar = async () => {
     setError(""); setOk(false);
@@ -1697,7 +1698,7 @@ export default function Map() {
     Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
   </div>
 </div>
-<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
+<script>window.onload=()=>{ window.print(); }</script>
 </body></html>`;
 
     const ventana = window.open("","_blank","width=900,height=700");
@@ -1999,7 +2000,7 @@ export default function Map() {
     Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
   </div>
 </div>
-<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
+<script>window.onload=()=>{ window.print(); }</script>
 </body></html>`;
 
     } else if(tipo==="RED") {
@@ -2141,7 +2142,7 @@ export default function Map() {
     Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
   </div>
 </div>
-<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
+<script>window.onload=()=>{ window.print(); }</script>
 </body></html>`;
     } else {
       // EFLUENTES — límites según Resolución 65/05, Secretaría del Agua y del Ambiente de Catamarca,
@@ -2305,7 +2306,7 @@ export default function Map() {
     Generado: ${fecha} · Usuario: Nicolás Doria · watergis-production.up.railway.app
   </div>
 </div>
-<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }</script>
+<script>window.onload=()=>{ window.print(); }</script>
 </body></html>`;
     }
 
