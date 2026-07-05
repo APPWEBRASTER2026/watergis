@@ -1858,6 +1858,7 @@ export default function Map() {
 
     } else if(tipo==="RED") {
       const avgCloro = avg(base, p=>num(p.Cloro_libre_mg_l));
+      const avgTurb  = avg(base, p=>num(p.Turb_NTU));
       const avgTDS   = avg(base, p=>num(p.TDS_mg_l));
       const avgAs    = avg(base, p=>num(p.As_mg_l));
       const avgFluor = avg(base, p=>num(p.Fluor_mg_l));
