@@ -34,7 +34,7 @@ import {
 } from "recharts";
 
 import L from "leaflet";
-import { MapPin, AlertTriangle, Droplets, Waves } from "lucide-react";
+import { MapPin, AlertTriangle, Droplets, Waves, Plus } from "lucide-react";
 
 // ======================================================
 // FIX LEAFLET
@@ -2563,16 +2563,6 @@ export default function Map() {
           )}
         </div>
 
-        {/* ── BOTÓN CARGAR DATOS ── */}
-        {esAutenticado && (
-          <button
-            onClick={()=>setShowCargaForm(true)}
-            className="flex items-center gap-2 rounded-lg border border-cyan-600 bg-cyan-500/10 px-3 py-1 text-sm text-cyan-300 hover:bg-cyan-500/20 transition-colors mr-2"
-          >
-            ➕ Cargar datos
-          </button>
-        )}
-
         {/* ── MENÚ USUARIO ── */}
         <div className="relative flex items-center gap-2">
           <button
@@ -2692,6 +2682,23 @@ export default function Map() {
           <p className="text-sm font-semibold text-cyan-400">{t.plataforma}</p>
           <p className="mt-2 text-xs text-slate-400">{t.provincia}</p>
         </div>
+
+        {/* ── CARGAR DATOS — solo usuarios autenticados ── */}
+        {esAutenticado && (
+          <button
+            onClick={()=>setShowCargaForm(true)}
+            className="group mb-6 flex w-full items-center gap-3 rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-500/10 to-cyan-500/5 p-4 text-left transition-all hover:border-cyan-400/60 hover:from-cyan-500/20 hover:to-cyan-500/10"
+          >
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-cyan-500 text-black transition-transform group-hover:scale-105">
+              <Plus size={20} strokeWidth={2.5}/>
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-bold text-white">Cargar datos</div>
+              <div className="text-[11px] text-slate-400">Nuevo punto de monitoreo</div>
+            </div>
+            <span className="text-cyan-400 opacity-0 transition-opacity group-hover:opacity-100">→</span>
+          </button>
+        )}
 
         <div className="mb-6 grid grid-cols-2 gap-3">
           <MiniKPI title={t.puntos}  value={visiblePoints.length} icon={<MapPin size={20} className="text-cyan-400"/>}/>
