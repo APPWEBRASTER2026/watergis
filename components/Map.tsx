@@ -317,6 +317,21 @@ const TEMP_DPTO: Record<string, number> = {
 const parseAs = (val: string | undefined) =>
   parseFloat(String(val || "0").replace(",", "."));
 
+// Límite CAA de Flúor según temperatura media anual (Art. 982) — compartido entre
+// el informe general y el mapa de calor, para no tener la tabla duplicada en dos lugares.
+const limiteFluorPorTemp = (temp: number): {limInf: number; limSup: number; rango: string} => {
+  if (temp <= 12.0)  return { limInf: 0.9, limSup: 1.7, rango: "10.0–12.0°C" };
+  if (temp <= 14.6)  return { limInf: 0.8, limSup: 1.5, rango: "12.1–14.6°C" };
+  if (temp <= 17.6)  return { limInf: 0.8, limSup: 1.3, rango: "14.7–17.6°C" };
+  if (temp <= 21.4)  return { limInf: 0.7, limSup: 1.2, rango: "17.7–21.4°C" };
+  if (temp <= 26.2)  return { limInf: 0.7, limSup: 1.0, rango: "21.5–26.2°C" };
+  return               { limInf: 0.6, limSup: 0.8, rango: "26.3–32.6°C" };
+};
+
+// Límites legales de referencia (CAA) usados para el mapa de calor absoluto
+const LIM_HEAT_AS  = 0.01;   // mg/L
+const LIM_HEAT_TDS = 1500;   // mg/L
+
 const fontFamilies: Record<Tipografia, string> = {
   inter: "'Inter','Segoe UI',sans-serif",
   mono:  "'Courier New','Roboto Mono',monospace",
@@ -338,21 +353,21 @@ function HeatLayer({ points, param }: { points: Punto[]; param: string }) {
     const L = (window as any).L;
     if (!L?.heatLayer || !map) return;
 
-    // Calcular percentil 90 para normalización dinámica
-    const valores = points
-      .map(p => {
-        if(param==="As")    return parseFloat(String(p.As_mg_l||"0").replace(",","."));
-        if(param==="TDS")   return parseFloat(String(p.TDS_mg_l||"0").replace(",","."));
-        if(param==="Fluor") return parseFloat(String(p.Fluor_mg_l||"0").replace(",","."));
-        return 0;
-      })
-      .filter(v => !isNaN(v) && v > 0)
-      .sort((a,b)=>a-b);
+    // Temperatura promedio del CSV, usada como respaldo si un departamento no está en la tabla
+    const temps = points.map(p=>parseFloat(String(p.T_ºC||"0").replace(",","."))).filter(v=>!isNaN(v)&&v>0);
+    const avgTempGlobal = temps.length>0 ? temps.reduce((a,b)=>a+b,0)/temps.length : 20;
 
-    const p90 = valores.length > 0
-      ? valores[Math.floor(valores.length * 0.9)]
-      : 1;
-    const maxRef = Math.max(p90, 0.001);
+    // Límite legal (CAA) de cada punto — para Flúor depende del departamento de ESE punto
+    const limitePara = (p: Punto): number => {
+      if (param==="As")  return LIM_HEAT_AS;
+      if (param==="TDS") return LIM_HEAT_TDS;
+      if (param==="Fluor") {
+        const dpto = (p.Departamento||"").toUpperCase();
+        const temp = TEMP_DPTO[dpto] ?? avgTempGlobal;
+        return limiteFluorPorTemp(temp).limSup;
+      }
+      return 1;
+    };
 
     const heatData = points
       .map(p => {
@@ -363,8 +378,10 @@ function HeatLayer({ points, param }: { points: Punto[]; param: string }) {
         if(param==="As")    val = parseFloat(String(p.As_mg_l||"0").replace(",","."));
         if(param==="TDS")   val = parseFloat(String(p.TDS_mg_l||"0").replace(",","."));
         if(param==="Fluor") val = parseFloat(String(p.Fluor_mg_l||"0").replace(",","."));
-        // Normalizar contra percentil 90 — valores altos destacan mucho más
-        const intensity = Math.min(val / maxRef, 1.5);
+        // Normalizar contra el límite LEGAL (no contra el percentil de la muestra):
+        // 0 = sin rastro, 1.0 = justo en el límite CAA, 2.0 = el doble del límite (rojo intenso)
+        const limite = limitePara(p);
+        const intensity = Math.min(val / limite, 2.0) / 2.0;
         return [lat, lng, intensity] as [number,number,number];
       })
       .filter((x): x is [number,number,number] => x !== null);
@@ -374,8 +391,8 @@ function HeatLayer({ points, param }: { points: Punto[]; param: string }) {
       blur:35,
       maxZoom:18,
       max:1.0,
-      minOpacity:0.3,
-      gradient:{ 0.0:"#22c55e", 0.3:"#86efac", 0.5:"#f59e0b", 0.75:"#ef4444", 1.0:"#7f1d1d" }
+      minOpacity:0.25,
+      gradient:{ 0.0:"#22c55e", 0.25:"#86efac", 0.5:"#f59e0b", 0.75:"#ef4444", 1.0:"#7f1d1d" }
     }).addTo(map);
 
     return () => { try{ map.removeLayer(heat); }catch{} };
@@ -1343,16 +1360,7 @@ export default function Map() {
     const tempAnual = TEMP_DPTO[dptoKey] ?? avgTemp; // fallback a promedio del CSV si no está en tabla
 
     // ── Límite CAA de Flúor según temperatura promedio (Art. 982) ──
-    // 6 rangos con límite inferior y superior
-    const getLimiteFluor = (temp: number): {limInf: number; limSup: number; rango: string} => {
-      if (temp <= 12.0)  return { limInf: 0.9, limSup: 1.7, rango: "10.0–12.0°C" };
-      if (temp <= 14.6)  return { limInf: 0.8, limSup: 1.5, rango: "12.1–14.6°C" };
-      if (temp <= 17.6)  return { limInf: 0.8, limSup: 1.3, rango: "14.7–17.6°C" };
-      if (temp <= 21.4)  return { limInf: 0.7, limSup: 1.2, rango: "17.7–21.4°C" };
-      if (temp <= 26.2)  return { limInf: 0.7, limSup: 1.0, rango: "21.5–26.2°C" };
-      return               { limInf: 0.6, limSup: 0.8, rango: "26.3–32.6°C" };
-    };
-    const fluorInfo = getLimiteFluor(tempAnual);
+    const fluorInfo = limiteFluorPorTemp(tempAnual);
 
     const estG  = avgAs>0.05?"⛔ ALERTA":avgAs>0.01?"⚠️ PRECAUCIÓN":"✅ NORMAL";
     const estColor = avgAs>0.05?"#ef4444":avgAs>0.01?"#f59e0b":"#22c55e";
