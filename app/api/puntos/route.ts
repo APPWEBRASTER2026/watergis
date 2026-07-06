@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 
+// Los mismos 3 usuarios históricos que están hardcodeados en el frontend (Map.tsx).
+// Se mantienen habilitados para cargar datos sin depender de la base de datos,
+// por compatibilidad con las cuentas que ya existían antes del sistema de registro.
+const ADMIN_HARDCODEADOS = ["nicolas.doria", "admin", "inspector1"];
+
 // Campos que puede mandar el formulario, en el mismo orden que la tabla
 const CAMPOS = [
   "localidad","departamento","fuente","tipo_punto","punto_de_muestreo",
@@ -33,20 +38,22 @@ export async function POST(req: NextRequest) {
     if (!usuario) {
       return NextResponse.json({ ok: false, error: "Debés iniciar sesión para cargar datos." }, { status: 401 });
     }
-    const userCheck = await pool.query("SELECT usuario, rol FROM usuarios WHERE usuario = $1", [
-      String(usuario).trim().toLowerCase(),
-    ]);
-    if (userCheck.rows.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "Tu usuario no está registrado en la base de datos. Registrate una vez desde la pantalla de inicio de sesión." },
-        { status: 403 }
-      );
-    }
-    if (userCheck.rows[0].rol !== "admin") {
-      return NextResponse.json(
-        { ok: false, error: "Tu cuenta no tiene permiso para cargar datos. Pedile a un administrador que te habilite." },
-        { status: 403 }
-      );
+    const usuarioLimpio = String(usuario).trim().toLowerCase();
+
+    if (!ADMIN_HARDCODEADOS.includes(usuarioLimpio)) {
+      const userCheck = await pool.query("SELECT usuario, rol FROM usuarios WHERE usuario = $1", [usuarioLimpio]);
+      if (userCheck.rows.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: "Tu usuario no está registrado en la base de datos. Registrate una vez desde la pantalla de inicio de sesión." },
+          { status: 403 }
+        );
+      }
+      if (userCheck.rows[0].rol !== "admin") {
+        return NextResponse.json(
+          { ok: false, error: "Tu cuenta no tiene permiso para cargar datos. Pedile a un administrador que te habilite." },
+          { status: 403 }
+        );
+      }
     }
 
     // ── Validaciones mínimas ──

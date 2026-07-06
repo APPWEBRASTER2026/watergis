@@ -723,7 +723,7 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
     ],
   };
   const parametrosActivos = (gruposParametros[categoria] || gruposParametros.AGUA)
-    .filter(p => !(categoria === "AGUA" && p.key === "cloro_libre_mg_l" && form.fuente !== "RED"));
+    .filter(p => !(categoria === "AGUA" && p.key === "cloro_libre_mg_l" && form.fuente !== "RED" && form.fuente !== "MEZCLA"));
 
   const handleGuardar = async () => {
     setError(""); setOk(false);
@@ -2155,13 +2155,16 @@ export default function Map() {
 <script>window.onload=()=>{ window.print(); }</script>
 </body></html>`;
     } else {
-      // EFLUENTES — límites según Resolución 65/05, Secretaría del Agua y del Ambiente de Catamarca,
-      // Título C: vuelco a curso de agua superficial o conducto pluvial abierto.
-      const LIM_DBO  = 50;   // mg/L
-      const LIM_DQO  = 80;   // mg/L
-      const LIM_GYA  = 1;    // Aceites y grasas, mg/L
-      const LIM_DET  = 1;    // Detergentes sintéticos, mg/L
-      const LIM_TDS_EFL = 1500; // mg/L — referencia general (no está en la Res. 65/05)
+      // EFLUENTES CLOACALES — límites según Tabla Consolidada de Límites Admisibles para
+      // vuelco de efluentes cloacales tratados a cuerpo receptor o colectora.
+      const LIM_DBO  = 50;    // mg/L
+      const LIM_DQO  = 250;   // mg/L
+      const LIM_GYA  = 50;    // Aceites y grasas (sust. solubles en éter etílico), mg/L
+      const LIM_DET  = 2;     // Detergentes sintéticos, mg/L (Res. 65/05, Título A — colectora cloacal)
+      const LIM_TEMP = 45;    // °C
+      const PH_MIN   = 5.5;
+      const PH_MAX   = 10.0;
+      const LIM_TDS_EFL = 1500; // mg/L — referencia general (no está en la tabla cloacal específica)
 
       const avgDBO = avg(base, p=>num(p.DBO_mg_l));
       const avgDQO = avg(base, p=>num(p.DQO_mg_l));
@@ -2169,6 +2172,7 @@ export default function Map() {
       const avgDet = avg(base, p=>num(p.Detergentes_mg_l));
       const avgTDS = avg(base, p=>num(p.TDS_mg_l));
       const avgPh  = avg(base, p=>num(p.Ph));
+      const avgTemp = avg(base, p=>num(p.T_ºC));
 
       const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
 
@@ -2181,19 +2185,21 @@ export default function Map() {
       const gyaOk    = base.filter(p=>num(p.Grasas_Aceites_mg_l)<=LIM_GYA).length;
       const gyaAlto  = base.filter(p=>num(p.Grasas_Aceites_mg_l)>LIM_GYA).length;
 
-      const estG     = (avgDBO>LIM_DBO||avgDQO>LIM_DQO||avgGyA>LIM_GYA||avgDet>LIM_DET) ? "FUERA DE NORMA" : "NORMAL";
+      const estG     = (avgDBO>LIM_DBO||avgDQO>LIM_DQO||avgGyA>LIM_GYA||avgDet>LIM_DET||avgPh<PH_MIN||avgPh>PH_MAX||avgTemp>LIM_TEMP) ? "FUERA DE NORMA" : "NORMAL";
       const estClase = estG==="FUERA DE NORMA" ? "alerta" : "normal";
 
       const puntosCriticos = base.filter(p=>
           num(p.DBO_mg_l)>LIM_DBO ||
           num(p.DQO_mg_l)>LIM_DQO ||
           num(p.Grasas_Aceites_mg_l)>LIM_GYA ||
-          num(p.Detergentes_mg_l)>LIM_DET)
+          num(p.Detergentes_mg_l)>LIM_DET ||
+          num(p.Ph)<PH_MIN || num(p.Ph)>PH_MAX ||
+          num(p.T_ºC)>LIM_TEMP)
         .sort((a,b)=>num(b.DBO_mg_l)-num(a.DBO_mg_l));
 
       const efluentesUnicos = [...new Set(base.map(p=>p.PUNTO_DE_MUESTREO))];
 
-      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Efluentes — ${nombreBase2}</title>
+      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe Efluentes Cloacales — ${nombreBase2}</title>
 <style>${sharedStyle}</style></head>
 <body>
 <div class="page">
@@ -2202,7 +2208,7 @@ export default function Map() {
     <div class="header-top">
       <div>
         <h1>🏭 WATERGIS</h1>
-        <div class="subtitle">INFORME DE EFLUENTES — CONTROL DE VUELCOS</div>
+        <div class="subtitle">INFORME DE EFLUENTES CLOACALES — CONTROL DE VUELCOS</div>
         <div class="subtitle"><strong>${titulo2}</strong></div>
       </div>
       <div style="text-align:right;font-size:10px;color:#64748b">
@@ -2223,14 +2229,15 @@ export default function Map() {
 
   <h2>INDICADORES PRINCIPALES</h2>
   <table>
-    <thead>${tr(["Parámetro","Promedio","Límite de vuelco (Res. 65/05)","Estado"],true)}</thead>
+    <thead>${tr(["Parámetro","Promedio","Límite de vuelco (efluente cloacal)","Estado"],true)}</thead>
     <tbody>
       ${tr(["DBO5 (Demanda Bioquímica de Oxígeno)", avgDBO.toFixed(1)+" mg/L", `${LIM_DBO} mg/L`, `<span class="${avgDBO>LIM_DBO?"supera":"ok"}">${avgDBO>LIM_DBO?"⛔ Supera":"✅ Normal"}</span>`])}
       ${tr(["DQO (Demanda Química de Oxígeno)", avgDQO.toFixed(1)+" mg/L", `${LIM_DQO} mg/L`, `<span class="${avgDQO>LIM_DQO?"supera":"ok"}">${avgDQO>LIM_DQO?"⛔ Supera":"✅ Normal"}</span>`])}
       ${tr(["Aceites y Grasas", avgGyA.toFixed(2)+" mg/L", `${LIM_GYA} mg/L`, `<span class="${avgGyA>LIM_GYA?"supera":"ok"}">${avgGyA>LIM_GYA?"⛔ Supera":"✅ Normal"}</span>`])}
       ${tr(["Detergentes sintéticos", avgDet.toFixed(2)+" mg/L", `${LIM_DET} mg/L`, `<span class="${avgDet>LIM_DET?"supera":"ok"}">${avgDet>LIM_DET?"⛔ Supera":"✅ Normal"}</span>`])}
       ${tr(["TDS", avgTDS.toFixed(0)+" mg/L", `${LIM_TDS_EFL} mg/L*`, `<span class="${avgTDS>LIM_TDS_EFL?"supera":"ok"}">${avgTDS>LIM_TDS_EFL?"⛔ Supera":"✅ Normal"}</span>`])}
-      ${tr(["pH", avgPh.toFixed(1), "6.0 – 8.5", `<span class="${avgPh<6||avgPh>8.5?"supera":"ok"}">${avgPh<6||avgPh>8.5?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
+      ${tr(["pH", avgPh.toFixed(1), `${PH_MIN} – ${PH_MAX}`, `<span class="${avgPh<PH_MIN||avgPh>PH_MAX?"supera":"ok"}">${avgPh<PH_MIN||avgPh>PH_MAX?"⚠️ Fuera de rango":"✅ Normal"}</span>`])}
+      ${tr(["Temperatura", avgTemp.toFixed(1)+" °C", `≤ ${LIM_TEMP} °C`, `<span class="${avgTemp>LIM_TEMP?"supera":"ok"}">${avgTemp>LIM_TEMP?"⛔ Supera":"✅ Normal"}</span>`])}
     </tbody>
   </table>
 
@@ -2292,22 +2299,26 @@ export default function Map() {
   </ul>
 
   <div class="caa-box">
-    <h2>LÍMITES DE VUELCO — RESOLUCIÓN 65/05 (Catamarca)</h2>
+    <h2>LÍMITES DE VUELCO — EFLUENTES CLOACALES</h2>
     <table>
       <thead>${tr(["Parámetro","Límite de vuelco","Norma de referencia"],true)}</thead>
       <tbody>
-        ${tr(["DBO5 (20°C, sin nitrificación)", "&lt; 50 mg/L", "Res. 65/05 — Título C, Art. 21"])}
-        ${tr(["DQO (dicromato de potasio)", "&lt; 80 mg/L", "Res. 65/05 — Título C, Art. 22"])}
-        ${tr(["Aceites y Grasas", "&lt; 1 mg/L", "Res. 65/05 — Título C, punto 3"])}
-        ${tr(["Detergentes sintéticos", "&lt; 1 mg/L", "Res. 65/05 — Título C, punto 14"])}
-        ${tr(["pH", "6.0 – 8.5", "Res. 65/05 — Título C, punto 2"])}
-        ${tr(["TDS", "1500 mg/L*", "Referencia general (no regulado por Res. 65/05)"])}
+        ${tr(["DBO5 (Demanda Bioquímica de Oxígeno)", "&lt; 50 mg/L", "Tabla Consolidada de Límites Admisibles — vertido tratado"])}
+        ${tr(["DQO (Demanda Química de Oxígeno)", "&lt; 250 mg/L", "Tabla Consolidada de Límites Admisibles"])}
+        ${tr(["Aceites y Grasas (sust. solubles en éter etílico)", "&lt; 50 mg/L", "Tabla Consolidada de Límites Admisibles"])}
+        ${tr(["Detergentes sintéticos", "&lt; 2 mg/L", "Res. 65/05 — Título A (vuelco a colectora cloacal)"])}
+        ${tr(["pH", "5.5 – 10.0", "Tabla Consolidada de Límites Admisibles"])}
+        ${tr(["Temperatura", "≤ 45 °C", "Tabla Consolidada de Límites Admisibles"])}
+        ${tr(["TDS", "1500 mg/L*", "Referencia general (no incluido en la tabla cloacal específica)"])}
       </tbody>
     </table>
     <p class="nota">
-      Fuente: Resolución 65/05, Secretaría del Agua y del Ambiente de Catamarca — Reglamento para el Control del Vertido de Líquidos Residuales, Título C
-      (vuelco a curso de agua superficial o conducto pluvial abierto). * El límite de TDS no está regulado específicamente por esta resolución;
-      se incluye como referencia general de calidad de agua.
+      Valores de referencia habituales para vuelco de efluentes cloacales tratados a cuerpo receptor o colectora
+      (Tabla Consolidada de Límites Admisibles). El límite de Detergentes se toma de la Resolución 65/05 de Catamarca,
+      Título A (vuelco a colectora cloacal), por ser el valor más específico disponible para ese parámetro.
+      * El límite de TDS no está regulado en esta tabla; se incluye como referencia general de calidad de agua.
+      Nota técnica: esta tabla no reemplaza indicadores microbiológicos (ej. Coliformes fecales) ni de sólidos
+      sedimentables/suspendidos, que hoy no forman parte de los parámetros cargados en el sistema.
     </p>
   </div>
 
