@@ -542,10 +542,48 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avat
   };
 
   return (
-    <div className="fixed inset-0 bg-[#020617] flex items-center justify-center z-[99999] overflow-y-auto py-8">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-100px] left-[-100px] w-[400px] h-[400px] rounded-full bg-cyan-500/5 blur-3xl" />
-        <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] rounded-full bg-blue-500/5 blur-3xl" />
+    <div className="fixed inset-0 flex items-center justify-center z-[99999] overflow-y-auto py-8" style={{background:"radial-gradient(ellipse at top left, #0c2d3d 0%, #041318 60%, #020a0d 100%)"}}>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{opacity:0.55}}>
+        <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" className="w-full h-full">
+          <g stroke="#2dd4bf" strokeWidth="1.2">
+            <line x1="80" y1="100" x2="200" y2="170"/><line x1="200" y1="170" x2="170" y2="280"/>
+            <line x1="200" y1="170" x2="320" y2="130"/><line x1="320" y1="130" x2="430" y2="190"/>
+            <line x1="430" y1="190" x2="560" y2="140"/><line x1="430" y1="190" x2="470" y2="300"/>
+            <line x1="170" y1="280" x2="260" y2="350"/><line x1="470" y1="300" x2="380" y2="370"/>
+            <line x1="260" y1="350" x2="380" y2="370"/>
+          </g>
+          <g stroke="#22d3ee" strokeWidth="1.2">
+            <line x1="700" y1="90" x2="800" y2="150"/><line x1="800" y1="150" x2="920" y2="110"/>
+            <line x1="800" y1="150" x2="840" y2="260"/><line x1="920" y1="110" x2="1030" y2="160"/>
+            <line x1="840" y1="260" x2="960" y2="300"/><line x1="960" y1="300" x2="1080" y2="250"/>
+          </g>
+          <g stroke="#2dd4bf" strokeWidth="1.2">
+            <line x1="60" y1="560" x2="160" y2="620"/><line x1="160" y1="620" x2="120" y2="720"/>
+            <line x1="160" y1="620" x2="280" y2="660"/><line x1="280" y1="660" x2="240" y2="750"/>
+          </g>
+          <g stroke="#22d3ee" strokeWidth="1.2">
+            <line x1="580" y1="520" x2="680" y2="580"/><line x1="680" y1="580" x2="650" y2="690"/>
+            <line x1="680" y1="580" x2="800" y2="540"/><line x1="800" y1="540" x2="900" y2="600"/>
+            <line x1="900" y1="600" x2="1000" y2="560"/><line x1="900" y1="600" x2="940" y2="710"/>
+          </g>
+          <g fill="#5eead4">
+            <circle cx="80" cy="100" r="4"/><circle cx="170" cy="280" r="4"/><circle cx="320" cy="130" r="4"/>
+            <circle cx="560" cy="140" r="4"/><circle cx="260" cy="350" r="4"/><circle cx="60" cy="560" r="4"/>
+            <circle cx="120" cy="720" r="4"/><circle cx="280" cy="660" r="4"/><circle cx="240" cy="750" r="4"/>
+          </g>
+          <g fill="#67e8f9">
+            <circle cx="920" cy="110" r="4"/><circle cx="1030" cy="160" r="4"/><circle cx="1080" cy="250" r="4"/>
+            <circle cx="650" cy="690" r="4"/><circle cx="1000" cy="560" r="4"/><circle cx="940" cy="710" r="4"/>
+          </g>
+          <g fill="#2dd4bf">
+            <circle cx="200" cy="170" r="6"/><circle cx="430" cy="190" r="6"/><circle cx="470" cy="300" r="6"/>
+            <circle cx="380" cy="370" r="6"/><circle cx="160" cy="620" r="6"/>
+          </g>
+          <g fill="#22d3ee">
+            <circle cx="800" cy="150" r="6"/><circle cx="840" cy="260" r="6"/><circle cx="960" cy="300" r="6"/>
+            <circle cx="680" cy="580" r="6"/><circle cx="800" cy="540" r="6"/><circle cx="900" cy="600" r="6"/>
+          </g>
+        </svg>
       </div>
       <div className="relative w-full max-w-md mx-4 my-auto">
         <div className="text-center mb-8">
@@ -557,7 +595,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avat
         </div>
 
         {modo==="login" ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-950 p-8 shadow-2xl">
+          <div className="rounded-2xl border border-cyan-500/20 bg-slate-950/60 backdrop-blur-md p-8 shadow-2xl">
             <h2 className="text-white font-bold text-lg mb-6 text-center">Iniciar sesión</h2>
             <div className="mb-4">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Usuario</label>
@@ -580,7 +618,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avat
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-700 bg-slate-950 p-8 shadow-2xl">
+          <div className="rounded-2xl border border-cyan-500/20 bg-slate-950/60 backdrop-blur-md p-8 shadow-2xl">
             <h2 className="text-white font-bold text-lg mb-6 text-center">Crear cuenta nueva</h2>
             <div className="mb-4">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Nombre completo</label>
@@ -858,6 +896,104 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
   );
 }
 
+// ======================================================
+// ASISTENTE DE AYUDA — información fija sobre química, efluentes,
+// napas y normativa. No usa ninguna IA ni API externa: cero costo.
+// ======================================================
+const TEMAS_AYUDA = [
+  {
+    emoji: "💧",
+    titulo: "Química del agua",
+    texto: `Los parámetros que monitorea el sistema tienen estos significados prácticos:
+    • Arsénico (As): de origen natural en muchos acuíferos del centro-norte argentino; la exposición prolongada por encima del límite se asocia a riesgos de salud a largo plazo (HACRE).
+    • Flúor: en dosis correctas previene caries, pero en exceso causa fluorosis dental y ósea — por eso el límite varía según la temperatura media del lugar (a mayor temperatura, se toma más agua, así que el límite permitido es menor).
+    • Nitratos (NO3): indican contaminación por materia orgánica (pozos ciegos, agroquímicos, ganadería cercana). En bebés pueden causar metahemoglobinemia.
+    • TDS (Sólidos Disueltos Totales): mide la mineralización general del agua; valores muy altos afectan el sabor y pueden indicar salinización.
+    • pH: fuera del rango normal puede corroer cañerías o indicar contaminación.`,
+  },
+  {
+    emoji: "🏭",
+    titulo: "Efluentes cloacales",
+    texto: `Antes de que un efluente (cloacal o industrial) se vuelque a un río o colectora, tiene que cumplir ciertos límites:
+    • DBO5 (Demanda Bioquímica de Oxígeno): mide cuánto oxígeno consumen los microorganismos al degradar la materia orgánica del agua. Si es muy alta, le saca el oxígeno disuelto al río y puede matar peces.
+    • DQO (Demanda Química de Oxígeno): similar a la DBO5, pero mide también compuestos que no se degradan biológicamente. Siempre es igual o mayor que la DBO5.
+    • Grasas y aceites: forman una película en la superficie del agua que impide el intercambio de oxígeno con el aire.
+    • Detergentes: en exceso generan espuma y afectan la fauna acuática.
+    Un tratamiento cloacal típico (planta depuradora) reduce estos valores antes de descargar el agua tratada.`,
+  },
+  {
+    emoji: "🕳️",
+    titulo: "Napas y acuíferos",
+    texto: `Un acuífero es una capa de roca o sedimento subterráneo que almacena y permite el paso del agua — es de donde se abastecen la mayoría de los pozos.
+    • Agua subterránea: viene de estos acuíferos, filtrada naturalmente por el suelo, pero puede arrastrar minerales de la roca (como arsénico o flúor de origen geológico).
+    • Agua superficial: ríos, diques y arroyos, más expuesta a contaminación directa pero generalmente con menos minerales disueltos.
+    • Contaminación de napas: ocurre por infiltración de pozos ciegos, agroquímicos, efluentes mal tratados, o sobreexplotación que permite el ingreso de agua salada o contaminada desde capas vecinas.
+    Por eso monitorear pozos de forma periódica es clave: una napa contaminada no se "limpia" rápido, el proceso de recuperación natural puede tardar años.`,
+  },
+  {
+    emoji: "📋",
+    titulo: "Normativa CAA y Res. 65/05",
+    texto: `Dos marcos normativos rigen lo que este sistema evalúa:
+    • Código Alimentario Argentino (CAA), Arts. 982-983: fija los límites de calidad de agua potable en todo el país — Arsénico 0.01 mg/L, Nitratos 45 mg/L, TDS 1500 mg/L, y Flúor variable según la temperatura media anual de la zona.
+    • Resolución 65/05 (Catamarca): regula el vertido de efluentes, con límites distintos según el destino (colectora cloacal, pozo absorbente, o curso de agua superficial).
+    Estas normas son la referencia que usa cada informe del sistema para marcar si un valor "supera" o está "normal".`,
+  },
+];
+
+function AsistenteAyuda() {
+  const [abierto, setAbierto] = useState(false);
+  const [temaAbierto, setTemaAbierto] = useState<number | null>(null);
+
+  return (
+    <>
+      {/* Botón flotante — tubo de ensayo */}
+      <button
+        onClick={()=>setAbierto(v=>!v)}
+        className="fixed bottom-6 right-6 z-[99998] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-teal-600 shadow-2xl hover:scale-105 transition-transform"
+        aria-label="Abrir ayuda"
+      >
+        <span className="text-2xl">🧪</span>
+      </button>
+
+      {abierto && (
+        <div className="fixed bottom-24 right-6 z-[99998] w-[340px] max-h-[70vh] flex flex-col rounded-2xl border border-cyan-500/30 bg-slate-950 shadow-2xl overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-3.5 bg-gradient-to-r from-cyan-700 to-teal-800 flex-shrink-0">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-lg">🧪</div>
+            <div className="flex-1">
+              <div className="text-sm font-bold text-white">Guía WATERGIS</div>
+              <div className="text-[10.5px] text-cyan-100">Química, efluentes y napas</div>
+            </div>
+            <button onClick={()=>setAbierto(false)} className="text-white/80 hover:text-white text-lg leading-none">✕</button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-3">
+            <p className="text-[11px] text-slate-400 mb-3">Elegí un tema para ver la explicación:</p>
+            <div className="flex flex-col gap-2">
+              {TEMAS_AYUDA.map((tema, i) => (
+                <div key={tema.titulo} className="rounded-lg border border-slate-700 overflow-hidden">
+                  <button
+                    onClick={()=>setTemaAbierto(temaAbierto===i ? null : i)}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-cyan-500/5 transition-colors"
+                  >
+                    <span className="text-base">{tema.emoji}</span>
+                    <span className="text-[11.5px] text-slate-200 flex-1">{tema.titulo}</span>
+                    <span className="text-slate-500 text-xs">{temaAbierto===i ? "▲" : "▼"}</span>
+                  </button>
+                  {temaAbierto===i && (
+                    <div className="px-3 pb-3 pt-1 border-t border-slate-800">
+                      <p className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">{tema.texto}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function Map() {
   // ── AUTH ──
   const [sesion, setSesion] = useState<{user:string;nombre:string;avatar?:string;rol?:string}|null>(null);
@@ -873,9 +1009,15 @@ export default function Map() {
     } catch {}
   },[]);
 
+  const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
+
   const handleLogin=(user:string,nombre:string,avatar?:string,rol?:string)=>{
     const s={user,nombre,avatar,rol}; setSesion(s); setLoginVisible(false);
     if(user!=="publico"){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); }catch{} }
+    if(user!=="publico"){
+      setMostrarBienvenida(true);
+      setTimeout(()=>setMostrarBienvenida(false), 4000);
+    }
   };
 
   const handleLogout=()=>{
@@ -2348,8 +2490,27 @@ export default function Map() {
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#020617]">
 
+      {/* ===== ASISTENTE DE AYUDA (tubo de ensayo, sin costo) ===== */}
+      {!loginVisible && <AsistenteAyuda />}
+
       {/* ===== PANTALLA DE LOGIN ===== */}
       {loginVisible && <LoginScreen onLogin={handleLogin} />}
+
+      {/* ===== BIENVENIDA AL INGRESAR ===== */}
+      {mostrarBienvenida && sesion && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100000]">
+          <div className="flex items-center gap-3 rounded-2xl border border-cyan-500/40 bg-slate-950/90 backdrop-blur-md px-5 py-3.5 shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-cyan-500/15 border border-cyan-500/40 text-xl flex-shrink-0">
+              {sesion.avatar || "💧"}
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white">Bienvenido, {sesion.nombre}</div>
+              <div className="text-[11px] text-cyan-300">Sesión iniciada correctamente</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCargaForm && esAutenticado && (
         <CargaDatosForm
           usuario={sesion!.user}
