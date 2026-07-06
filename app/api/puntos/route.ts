@@ -28,18 +28,23 @@ export async function POST(req: NextRequest) {
     const { usuario } = body;
 
     // ── Verificación de autorización ──
-    // Solo un usuario que exista en la base de datos puede cargar datos.
-    // (Los 3 usuarios históricos hardcodeados deben registrarse una vez
-    // con el formulario de "Registrar nuevo usuario" para poder cargar datos).
+    // Solo un usuario con rol 'admin' puede cargar datos — registrarse no alcanza.
+    // El rol se asigna a mano en la base de datos, nunca desde el formulario.
     if (!usuario) {
       return NextResponse.json({ ok: false, error: "Debés iniciar sesión para cargar datos." }, { status: 401 });
     }
-    const userCheck = await pool.query("SELECT usuario FROM usuarios WHERE usuario = $1", [
+    const userCheck = await pool.query("SELECT usuario, rol FROM usuarios WHERE usuario = $1", [
       String(usuario).trim().toLowerCase(),
     ]);
     if (userCheck.rows.length === 0) {
       return NextResponse.json(
         { ok: false, error: "Tu usuario no está registrado en la base de datos. Registrate una vez desde la pantalla de inicio de sesión." },
+        { status: 403 }
+      );
+    }
+    if (userCheck.rows[0].rol !== "admin") {
+      return NextResponse.json(
+        { ok: false, error: "Tu cuenta no tiene permiso para cargar datos. Pedile a un administrador que te habilite." },
         { status: 403 }
       );
     }

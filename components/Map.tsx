@@ -425,7 +425,7 @@ const STORAGE_KEY = "watergis_session";
 // Íconos de avatar disponibles — temática de agua/monitoreo ambiental
 const AVATARES = ["💧","🌊","🏞️","💦","🚰","🏔️","🐟","🌿","⚗️","🧪","🔬","📡"];
 
-function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avatar?: string) => void }) {
+function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avatar?: string, rol?: string) => void }) {
   const [modo, setModo] = useState<"login"|"registro">("login");
 
   // ── Campos de login ──
@@ -470,7 +470,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avat
       });
       const data = await res.json();
       if (data.ok) {
-        onLogin(data.usuario, data.nombre, data.avatar);
+        onLogin(data.usuario, data.nombre, data.avatar, data.rol);
       } else {
         setError(data.error || "Usuario o contraseña incorrectos.");
       }
@@ -513,7 +513,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avat
       const data = await res.json();
       if (data.ok) {
         setRegOk("¡Cuenta creada! Iniciando sesión...");
-        setTimeout(()=>onLogin(data.usuario, data.nombre, regAvatar), 800);
+        setTimeout(()=>onLogin(data.usuario, data.nombre, regAvatar, "usuario"), 800);
       } else {
         setRegError(data.error || "No se pudo crear la cuenta.");
       }
@@ -843,9 +843,11 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
 
 export default function Map() {
   // ── AUTH ──
-  const [sesion, setSesion] = useState<{user:string;nombre:string;avatar?:string}|null>(null);
+  const [sesion, setSesion] = useState<{user:string;nombre:string;avatar?:string;rol?:string}|null>(null);
   const [loginVisible, setLoginVisible] = useState(true);
   const esAutenticado = sesion !== null && sesion.user !== "publico";
+  // Los 3 usuarios históricos (hardcodeados) son admin por compatibilidad; el resto depende de la base de datos
+  const esAdmin = esAutenticado && (sesion?.rol === "admin" || !!USUARIOS[sesion?.user || ""]);
 
   useEffect(()=>{
     try {
@@ -854,8 +856,8 @@ export default function Map() {
     } catch {}
   },[]);
 
-  const handleLogin=(user:string,nombre:string,avatar?:string)=>{
-    const s={user,nombre,avatar}; setSesion(s); setLoginVisible(false);
+  const handleLogin=(user:string,nombre:string,avatar?:string,rol?:string)=>{
+    const s={user,nombre,avatar,rol}; setSesion(s); setLoginVisible(false);
     if(user!=="publico"){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); }catch{} }
   };
 
@@ -2878,8 +2880,8 @@ export default function Map() {
           <p className="mt-2 text-xs text-slate-400">{t.provincia}</p>
         </div>
 
-        {/* ── CARGAR DATOS — solo usuarios autenticados ── */}
-        {esAutenticado && (
+        {/* ── CARGAR DATOS — solo administradores autorizados ── */}
+        {esAdmin && (
           <button
             onClick={()=>setShowCargaForm(true)}
             className="group mb-6 flex w-full items-center gap-3 rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-500/10 to-cyan-500/5 p-4 text-left transition-all hover:border-cyan-400/60 hover:from-cyan-500/20 hover:to-cyan-500/10"
