@@ -727,17 +727,32 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
   // Categoría visible al usuario (agrupa Pozo+Red+Fuente bajo "Agua potable")
   const [categoria, setCategoria] = useState<"AGUA"|"DIQUE"|"EFLUENTE">("AGUA");
 
+  // Qué botón de Fuente está resaltado en la UI (distinto del valor real que se guarda,
+  // porque un punto de Red guarda como "fuente" su origen real: Subterránea/Superficial/Mezcla)
+  const [fuenteUI, setFuenteUI] = useState<"SUBTERRANEA"|"SUPERFICIAL"|"MEZCLA"|"RED">("SUBTERRANEA");
+
   // Al elegir categoría, derivamos el tipo_punto real que se guarda en la base
   const elegirCategoria = (cat: "AGUA"|"DIQUE"|"EFLUENTE") => {
     setCategoria(cat);
     if (cat === "DIQUE") setForm(prev => ({ ...prev, tipo_punto: "DIQUE" }));
     else if (cat === "EFLUENTE") setForm(prev => ({ ...prev, tipo_punto: "EFLUENTE" }));
-    else setForm(prev => ({ ...prev, tipo_punto: prev.fuente === "RED" ? "RED" : "POZO" }));
+    else setForm(prev => ({ ...prev, tipo_punto: fuenteUI === "RED" ? "RED" : "POZO" }));
   };
 
-  // Dentro de "Agua potable", el botón de Fuente también decide si es POZO o RED
-  const elegirFuente = (f: string) => {
-    setForm(prev => ({ ...prev, fuente: f, tipo_punto: f === "RED" ? "RED" : "POZO" }));
+  // Botón de Fuente (Subterránea/Superficial/Mezcla/Red). Si es Red, el origen real
+  // (para el campo "fuente" que se guarda) se completa con el sub-selector de abajo.
+  const elegirFuente = (f: "SUBTERRANEA"|"SUPERFICIAL"|"MEZCLA"|"RED") => {
+    setFuenteUI(f);
+    if (f === "RED") {
+      setForm(prev => ({ ...prev, tipo_punto: "RED", fuente: "SUBTERRANEA" })); // origen por defecto
+    } else {
+      setForm(prev => ({ ...prev, tipo_punto: "POZO", fuente: f }));
+    }
+  };
+
+  // Origen real del agua de Red — solo se pregunta cuando fuenteUI es "RED"
+  const elegirOrigenRed = (origen: string) => {
+    setForm(prev => ({ ...prev, fuente: origen }));
   };
 
   // Qué parámetros mostrar según la categoría elegida — evita llenar campos que no aplican
@@ -763,7 +778,7 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
     ],
   };
   const parametrosActivos = (gruposParametros[categoria] || gruposParametros.AGUA)
-    .filter(p => !(categoria === "AGUA" && p.key === "cloro_libre_mg_l" && form.fuente !== "RED" && form.fuente !== "MEZCLA"));
+    .filter(p => !(categoria === "AGUA" && p.key === "cloro_libre_mg_l" && fuenteUI !== "RED" && fuenteUI !== "MEZCLA"));
 
   const handleGuardar = async () => {
     setError(""); setOk(false);
@@ -841,18 +856,38 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
             <div className="mb-4">
               <label className={labelClass}>Fuente *</label>
               <div className="grid grid-cols-4 gap-2">
-                {["SUBTERRANEA","SUPERFICIAL","MEZCLA","RED"].map(f => (
+                {(["SUBTERRANEA","SUPERFICIAL","MEZCLA","RED"] as const).map(f => (
                   <button
                     key={f}
                     onClick={()=>elegirFuente(f)}
                     className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
-                      form.fuente===f ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
+                      fuenteUI===f ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
                     }`}
                   >
                     {f==="SUBTERRANEA"?"Subterránea":f==="SUPERFICIAL"?"Superficial":f==="MEZCLA"?"Mezcla":"🚿 Red"}
                   </button>
                 ))}
               </div>
+
+              {/* Sub-selector — solo aparece si se eligió Red: de qué origen viene esa agua */}
+              {fuenteUI === "RED" && (
+                <div className="mt-3">
+                  <label className={labelClass}>¿De qué origen viene el agua de esta red? *</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {["SUBTERRANEA","SUPERFICIAL","MEZCLA"].map(o => (
+                      <button
+                        key={o}
+                        onClick={()=>elegirOrigenRed(o)}
+                        className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                          form.fuente===o ? "border-purple-500 bg-purple-500/20 text-purple-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
+                        }`}
+                      >
+                        {o==="SUBTERRANEA"?"Subterránea":o==="SUPERFICIAL"?"Superficial":"Mezcla"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
