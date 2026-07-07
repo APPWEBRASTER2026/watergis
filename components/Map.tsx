@@ -746,11 +746,13 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
       {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"turb_ntu", label:"Turbidez", unidad:"NTU"},
       {key:"cloro_libre_mg_l", label:"Cloro libre", unidad:"mg/L"}, {key:"as_mg_l", label:"Arsénico (As)", unidad:"mg/L"},
       {key:"no3_mg_l", label:"Nitratos (NO3)", unidad:"mg/L"}, {key:"fluor_mg_l", label:"Flúor", unidad:"mg/L"},
+      {key:"ph", label:"pH"}, {key:"t_c", label:"Temperatura", unidad:"°C"},
     ],
     DIQUE: [
       {key:"tds_mg_l", label:"TDS", unidad:"mg/L"}, {key:"turb_ntu", label:"Turbidez", unidad:"NTU"},
       {key:"od_mg_l", label:"Oxígeno Disuelto (OD)", unidad:"mg/L"}, {key:"sat_o2_pct", label:"Saturación de O₂", unidad:"%"},
       {key:"clorofila_ug_l", label:"Clorofila-a", unidad:"µg/L"}, {key:"algas_bga", label:"Algas BGA", unidad:"cel/mL"},
+      {key:"ph", label:"pH"}, {key:"t_c", label:"Temperatura", unidad:"°C"},
     ],
     EFLUENTE: [
       {key:"od_mg_l", label:"Oxígeno Disuelto (OD)", unidad:"mg/L"}, {key:"sat_o2_pct", label:"Saturación de O₂", unidad:"%"},
