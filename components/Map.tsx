@@ -707,14 +707,37 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avat
 // ======================================================
 // FORMULARIO DE CARGA DE DATOS
 // ======================================================
-function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onClose: () => void; onGuardado: () => void }) {
+function CargaDatosForm({
+  usuario, onClose, onGuardado, puntos, prefill,
+}: {
+  usuario: string;
+  onClose: () => void;
+  onGuardado: () => void;
+  puntos: Punto[];
+  prefill?: { punto_de_muestreo: string; localidad: string; departamento: string; fuente: string; tipo_punto: string; latitud: string; longitud: string } | null;
+}) {
+  const esNuevaCampana = !!prefill;
+
+  const categoriaInicial = (): "AGUA"|"DIQUE"|"EFLUENTE" => {
+    if (!prefill) return "AGUA";
+    if (prefill.tipo_punto === "DIQUE") return "DIQUE";
+    if (prefill.tipo_punto === "EFLUENTE") return "EFLUENTE";
+    return "AGUA";
+  };
+  const fuenteUIInicial = (): "SUBTERRANEA"|"SUPERFICIAL"|"MEZCLA"|"RED" => {
+    if (!prefill) return "SUBTERRANEA";
+    if (prefill.tipo_punto === "RED") return "RED";
+    return (prefill.fuente as any) || "SUBTERRANEA";
+  };
+
   const vacio = {
-    localidad: "", departamento: "", fuente: "SUBTERRANEA", tipo_punto: "POZO",
-    punto_de_muestreo: "", fecha_de_monitoreo: "", ph: "", t_c: "", tds_mg_l: "",
+    localidad: prefill?.localidad || "", departamento: prefill?.departamento || "",
+    fuente: prefill?.fuente || "SUBTERRANEA", tipo_punto: prefill?.tipo_punto || "POZO",
+    punto_de_muestreo: prefill?.punto_de_muestreo || "", fecha_de_monitoreo: "", ph: "", t_c: "", tds_mg_l: "",
     turb_ntu: "", salinidad_mg_l: "", as_mg_l: "", fluor_mg_l: "", no3_mg_l: "",
     od_mg_l: "", sat_o2_pct: "", clorofila_ug_l: "", algas_bga: "", cloro_libre_mg_l: "",
     dbo_mg_l: "", dqo_mg_l: "", detergentes_mg_l: "", grasas_aceites_mg_l: "",
-    latitud: "", longitud: "",
+    latitud: prefill?.latitud || "", longitud: prefill?.longitud || "",
   };
   const [form, setForm] = useState(vacio);
   const [error, setError] = useState("");
@@ -725,11 +748,49 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
     setForm(prev => ({ ...prev, [campo]: e.target.value }));
 
   // Categoría visible al usuario (agrupa Pozo+Red+Fuente bajo "Agua potable")
-  const [categoria, setCategoria] = useState<"AGUA"|"DIQUE"|"EFLUENTE">("AGUA");
+  const [categoria, setCategoria] = useState<"AGUA"|"DIQUE"|"EFLUENTE">(categoriaInicial());
 
   // Qué botón de Fuente está resaltado en la UI (distinto del valor real que se guarda,
   // porque un punto de Red guarda como "fuente" su origen real: Subterránea/Superficial/Mezcla)
-  const [fuenteUI, setFuenteUI] = useState<"SUBTERRANEA"|"SUPERFICIAL"|"MEZCLA"|"RED">("SUBTERRANEA");
+  const [fuenteUI, setFuenteUI] = useState<"SUBTERRANEA"|"SUPERFICIAL"|"MEZCLA"|"RED">(fuenteUIInicial());
+
+  // ── Autocompletar por nombre de punto (solo para puntos nuevos, sin prefill) ──
+  const [buscando, setBuscando] = useState(false);
+  const puntosUnicos = useMemo(() => {
+    const vistos = new Set<string>();
+    const lista: { nombre: string; localidad: string; departamento: string; fuente: string; tipo_punto: string; latitud: string; longitud: string; campanas: number }[] = [];
+    puntos.forEach(p => {
+      const clave = `${p.PUNTO_DE_MUESTREO}__${p.Localidad}`;
+      const existente = lista.find(x => x.nombre === p.PUNTO_DE_MUESTREO && x.localidad === p.Localidad);
+      if (existente) { existente.campanas++; return; }
+      if (!p.PUNTO_DE_MUESTREO) return;
+      lista.push({
+        nombre: p.PUNTO_DE_MUESTREO, localidad: p.Localidad, departamento: p.Departamento,
+        fuente: p.Fuente, tipo_punto: p.Tipo_Punto || "POZO",
+        latitud: p.Latitud, longitud: p.Longitud, campanas: 1,
+      });
+    });
+    return lista;
+  }, [puntos]);
+
+  const sugerencias = useMemo(() => {
+    const texto = form.punto_de_muestreo.trim().toLowerCase();
+    if (esNuevaCampana || texto.length < 2) return [];
+    return puntosUnicos.filter(p => p.nombre.toLowerCase().includes(texto)).slice(0, 6);
+  }, [form.punto_de_muestreo, puntosUnicos, esNuevaCampana]);
+
+  const elegirSugerencia = (s: typeof puntosUnicos[number]) => {
+    setForm(prev => ({
+      ...prev, punto_de_muestreo: s.nombre, localidad: s.localidad, departamento: s.departamento,
+      fuente: s.tipo_punto === "RED" ? (s.fuente || "SUBTERRANEA") : s.fuente,
+      tipo_punto: s.tipo_punto, latitud: s.latitud, longitud: s.longitud,
+    }));
+    if (s.tipo_punto === "DIQUE") setCategoria("DIQUE");
+    else if (s.tipo_punto === "EFLUENTE") setCategoria("EFLUENTE");
+    else setCategoria("AGUA");
+    setFuenteUI(s.tipo_punto === "RED" ? "RED" : (s.fuente as any) || "SUBTERRANEA");
+    setBuscando(false);
+  };
 
   // Al elegir categoría, derivamos el tipo_punto real que se guarda en la base
   const elegirCategoria = (cat: "AGUA"|"DIQUE"|"EFLUENTE") => {
@@ -816,14 +877,17 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
         <div className="sticky top-0 bg-slate-950 border-b border-slate-800 p-5 flex justify-between items-center z-10">
           <div>
-            <h2 className="text-white font-bold text-lg">➕ Cargar dato de monitoreo</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Se guarda directo en la base de datos — aparece en el mapa al instante.</p>
+            <h2 className="text-white font-bold text-lg">{esNuevaCampana ? "➕ Nueva campaña" : "➕ Cargar dato de monitoreo"}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {esNuevaCampana ? `${prefill!.punto_de_muestreo} — los datos del punto ya están cargados` : "Se guarda directo en la base de datos — aparece en el mapa al instante."}
+            </p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">✕</button>
         </div>
 
         <div className="p-5">
-          {/* Categoría — define qué parámetros se piden más abajo */}
+          {/* Categoría — define qué parámetros se piden más abajo (fija si es una nueva campaña) */}
+          {!esNuevaCampana && (
           <div className="mb-4">
             <label className={labelClass}>¿Qué datos querés cargar? *</label>
             <div className="grid grid-cols-3 gap-2">
@@ -850,9 +914,10 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
               </p>
             )}
           </div>
+          )}
 
           {/* Fuente — solo aplica a Agua Potable; acá también se elige si es un punto de Red */}
-          {categoria === "AGUA" && (
+          {!esNuevaCampana && categoria === "AGUA" && (
             <div className="mb-4">
               <label className={labelClass}>Fuente *</label>
               <div className="grid grid-cols-4 gap-2">
@@ -891,20 +956,67 @@ function CargaDatosForm({ usuario, onClose, onGuardado }: { usuario: string; onC
             </div>
           )}
 
-          <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">Ubicación</h3>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div><label className={labelClass}>Localidad *</label><input className={inputClass} value={form.localidad} onChange={set("localidad")} placeholder="Ej: San Fernando"/></div>
-            <div><label className={labelClass}>Departamento *</label><input className={inputClass} value={form.departamento} onChange={set("departamento")} placeholder="Ej: Capital"/></div>
-          </div>
-          <div className="mb-3">
-            <label className={labelClass}>Punto de muestreo *</label>
-            <input className={inputClass} value={form.punto_de_muestreo} onChange={set("punto_de_muestreo")} placeholder="Ej: Pozo N°3, Dique Ipizca, Red Escuela N°317..."/>
-          </div>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            <div><label className={labelClass}>Latitud *</label><input className={inputClass} value={form.latitud} onChange={set("latitud")} placeholder="-28.4696"/></div>
-            <div><label className={labelClass}>Longitud *</label><input className={inputClass} value={form.longitud} onChange={set("longitud")} placeholder="-65.7852"/></div>
-            <div><label className={labelClass}>Fecha de monitoreo</label><input type="date" className={inputClass} value={form.fecha_de_monitoreo} onChange={set("fecha_de_monitoreo")}/></div>
-          </div>
+          {esNuevaCampana ? (
+            <>
+              <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">Punto (bloqueado)</h3>
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 mb-3">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span className="text-slate-500">Localidad:</span> <span className="text-slate-300">{form.localidad}</span></div>
+                  <div><span className="text-slate-500">Depto:</span> <span className="text-slate-300">{form.departamento}</span></div>
+                  <div><span className="text-slate-500">Fuente:</span> <span className="text-slate-300">{form.fuente}</span></div>
+                  <div><span className="text-slate-500">Tipo:</span> <span className="text-slate-300">{form.tipo_punto}</span></div>
+                </div>
+                <div className="mt-2 pt-2 border-t border-slate-800 text-[11px] text-slate-500">
+                  📍 {form.latitud}, {form.longitud} · 🔒 no se puede editar desde acá
+                </div>
+              </div>
+              <div className="mb-3">
+                <label className={labelClass}>Fecha de esta campaña *</label>
+                <input type="date" className={inputClass} value={form.fecha_de_monitoreo} onChange={set("fecha_de_monitoreo")}/>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">Ubicación</h3>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div><label className={labelClass}>Localidad *</label><input className={inputClass} value={form.localidad} onChange={set("localidad")} placeholder="Ej: San Fernando"/></div>
+                <div><label className={labelClass}>Departamento *</label><input className={inputClass} value={form.departamento} onChange={set("departamento")} placeholder="Ej: Capital"/></div>
+              </div>
+              <div className="mb-3 relative">
+                <label className={labelClass}>Punto de muestreo *</label>
+                <input
+                  className={inputClass}
+                  value={form.punto_de_muestreo}
+                  onChange={e=>{ set("punto_de_muestreo")(e); setBuscando(true); }}
+                  onFocus={()=>setBuscando(true)}
+                  onBlur={()=>setTimeout(()=>setBuscando(false), 150)}
+                  placeholder="Ej: Pozo N°3, Dique Ipizca, Red Escuela N°317..."
+                />
+                {buscando && sugerencias.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 shadow-xl overflow-hidden">
+                    {sugerencias.map(s => (
+                      <button
+                        key={`${s.nombre}_${s.localidad}`}
+                        onClick={()=>elegirSugerencia(s)}
+                        className="w-full text-left px-3 py-2 hover:bg-cyan-500/10 border-b border-slate-800 last:border-0"
+                      >
+                        <div className="text-xs text-slate-200">{s.nombre} <span className="text-cyan-400">— {s.localidad}</span></div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{s.campanas} campaña{s.campanas!==1?"s":""} cargada{s.campanas!==1?"s":""}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!esNuevaCampana && form.punto_de_muestreo.trim().length >= 2 && (
+                  <p className="text-[10px] text-slate-500 mt-1">💡 Si ya cargaste este punto antes, elegilo de la lista para completar ubicación y fuente solas.</p>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div><label className={labelClass}>Latitud *</label><input className={inputClass} value={form.latitud} onChange={set("latitud")} placeholder="-28.4696"/></div>
+                <div><label className={labelClass}>Longitud *</label><input className={inputClass} value={form.longitud} onChange={set("longitud")} placeholder="-65.7852"/></div>
+                <div><label className={labelClass}>Fecha de monitoreo</label><input type="date" className={inputClass} value={form.fecha_de_monitoreo} onChange={set("fecha_de_monitoreo")}/></div>
+              </div>
+            </>
+          )}
 
           <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mt-5 mb-2">
             Parámetros — {categoria==="AGUA"?"Agua Potable":categoria==="DIQUE"?"Diques":"Efluentes"}
@@ -1133,6 +1245,20 @@ export default function Map() {
   };
   const [showAjustes, setShowAjustes]   = useState(false);
   const [showCargaForm, setShowCargaForm] = useState(false);
+  const [puntoParaNuevaCampana, setPuntoParaNuevaCampana] = useState<{ punto_de_muestreo: string; localidad: string; departamento: string; fuente: string; tipo_punto: string; latitud: string; longitud: string } | null>(null);
+
+  const abrirNuevaCampana = (p: Punto) => {
+    setPuntoParaNuevaCampana({
+      punto_de_muestreo: p.PUNTO_DE_MUESTREO,
+      localidad: p.Localidad,
+      departamento: p.Departamento,
+      fuente: p.Fuente,
+      tipo_punto: p.Tipo_Punto || "POZO",
+      latitud: p.Latitud,
+      longitud: p.Longitud,
+    });
+    setShowCargaForm(true);
+  };
   const [selectedVariable, setSelectedVariable] = useState("As");
   const [selectedFuente, setSelectedFuente]     = useState("TODAS");
 
@@ -2551,8 +2677,10 @@ export default function Map() {
       {showCargaForm && esAutenticado && (
         <CargaDatosForm
           usuario={sesion!.user}
-          onClose={()=>setShowCargaForm(false)}
+          onClose={()=>{ setShowCargaForm(false); setPuntoParaNuevaCampana(null); }}
           onGuardado={recargarTodosLosPuntos}
+          puntos={points}
+          prefill={puntoParaNuevaCampana}
         />
       )}
 
@@ -3590,6 +3718,24 @@ export default function Map() {
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
+
+                      {esAdmin && (
+                        <button
+                          onClick={()=>abrirNuevaCampana(point)}
+                          style={{
+                            width:"100%", marginTop:"12px", display:"flex", alignItems:"center", gap:"8px",
+                            background:"rgba(34,211,238,0.1)", border:"1px solid rgba(34,211,238,0.4)",
+                            borderRadius:"10px", padding:"9px 10px", cursor:"pointer",
+                          }}
+                        >
+                          <span style={{
+                            width:"22px", height:"22px", borderRadius:"6px", background:"#22d3ee",
+                            color:"#022c33", display:"flex", alignItems:"center", justifyContent:"center",
+                            fontWeight:700, fontSize:"13px", flexShrink:0,
+                          }}>+</span>
+                          <span style={{fontSize:"11px", color:"#67e8f9", fontWeight:600}}>Agregar nueva campaña acá</span>
+                        </button>
+                      )}
                     </>
                   ) : (
                     <div style={{textAlign:"center",padding:"16px 0"}}>
