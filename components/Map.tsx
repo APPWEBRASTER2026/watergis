@@ -1318,6 +1318,58 @@ export default function Map() {
   const [infFuente, setInfFuente] = useState("TODAS");
   const [infRiesgo, setInfRiesgo] = useState("TODOS");
 
+  // ── Período del informe — compartido entre el informe general y los de Diques/Red/Efluentes ──
+  const [periodoInforme, setPeriodoInforme] = useState<"TODO"|"MES"|"TRIMESTRE"|"ANIO"|"CUSTOM">("TODO");
+  const [fechaDesdeInf, setFechaDesdeInf] = useState("");
+  const [fechaHastaInf, setFechaHastaInf] = useState("");
+
+  const parseFechaMonitoreo = (s: string | undefined): Date | null => {
+    if (!s) return null;
+    const str = s.trim();
+    let m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/); // yyyy-mm-dd (input type=date)
+    if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+    m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // d/m/yyyy del CSV
+    if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+    return null;
+  };
+
+  const puntoEnPeriodo = (p: Punto): boolean => {
+    if (periodoInforme === "TODO") return true;
+    const f = parseFechaMonitoreo(p.Fecha_de_monitoreo);
+    if (!f) return true; // sin fecha cargada: no lo excluimos, para no perder datos viejos sin ese dato
+    const hoy = new Date();
+    if (periodoInforme === "MES") {
+      const limite = new Date(); limite.setMonth(limite.getMonth()-1);
+      return f >= limite;
+    }
+    if (periodoInforme === "TRIMESTRE") {
+      const limite = new Date(); limite.setMonth(limite.getMonth()-3);
+      return f >= limite;
+    }
+    if (periodoInforme === "ANIO") {
+      return f.getFullYear() === hoy.getFullYear();
+    }
+    if (periodoInforme === "CUSTOM") {
+      if (fechaDesdeInf) { const d = parseFechaMonitoreo(fechaDesdeInf); if (d && f < d) return false; }
+      if (fechaHastaInf) { const h = parseFechaMonitoreo(fechaHastaInf); if (h && f > h) return false; }
+      return true;
+    }
+    return true;
+  };
+
+  const periodoLabel = () => {
+    if (periodoInforme==="TODO") return "Histórico completo";
+    if (periodoInforme==="MES") return "Último mes";
+    if (periodoInforme==="TRIMESTRE") return "Último trimestre";
+    if (periodoInforme==="ANIO") return `Año ${new Date().getFullYear()}`;
+    if (periodoInforme==="CUSTOM") {
+      const d = fechaDesdeInf ? new Date(fechaDesdeInf).toLocaleDateString("es-AR") : "el inicio";
+      const h = fechaHastaInf ? new Date(fechaHastaInf).toLocaleDateString("es-AR") : "hoy";
+      return `Del ${d} al ${h}`;
+    }
+    return "Histórico completo";
+  };
+
   // Capas personalizadas
   const [customLayers, setCustomLayers] = useState<{ url: string; name: string; color: string; data: any }[]>([]);
   const [newLayerUrl, setNewLayerUrl]   = useState("");
@@ -1644,7 +1696,7 @@ export default function Map() {
         (infRiesgo==="ALTO"  && asV>0.05);
       const lat = parseFloat(p.Latitud?.toString().replace(",","."));
       const lng = parseFloat(p.Longitud?.toString().replace(",","."));
-      return dOk&&lOk&&fOk&&rOk&&!isNaN(lat)&&!isNaN(lng);
+      return dOk&&lOk&&fOk&&rOk&&!isNaN(lat)&&!isNaN(lng)&&puntoEnPeriodo(p);
     });
 
     const base: Punto[] = filtrado.length > 0 ? filtrado : points.filter(p=>{
@@ -1790,9 +1842,10 @@ export default function Map() {
         <h1>💧 WATERGIS</h1>
         <div class="subtitle">INFORME HIDROQUÍMICO LOCAL</div>
         <div class="subtitle"><strong>${titulo2}</strong></div>
+        <div class="subtitle">Período: <strong>${periodoLabel()}</strong></div>
       </div>
       <div style="text-align:right;font-size:10px;color:#64748b">
-        <div>Usuario: Nicolás Doria</div>
+        <div>Usuario: ${sesion?.nombre || "Visitante"}</div>
         <div>Fecha: ${fecha}</div>
         <div>Puntos analizados: ${base.length}</div>
       </div>
@@ -2045,7 +2098,7 @@ export default function Map() {
       const diqueOk = tipo!=="DIQUE" || diqueSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===diqueSeleccionado;
       const redOk   = tipo!=="RED"   || redPuntoSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===redPuntoSeleccionado;
       const efluOk  = tipo!=="EFLUENTE" || efluenteSeleccionado==="TODOS" || p.PUNTO_DE_MUESTREO===efluenteSeleccionado;
-      return dOk && lOk && diqueOk && redOk && efluOk;
+      return dOk && lOk && diqueOk && redOk && efluOk && puntoEnPeriodo(p);
     });
 
     const fecha = new Date().toLocaleDateString("es-AR");
@@ -2165,6 +2218,7 @@ export default function Map() {
         <h1>💧 WATERGIS</h1>
         <div class="subtitle">INFORME DE DIQUES — MONITOREO DE CALIDAD DE AGUA</div>
         <div class="subtitle"><strong>${titulo2}</strong></div>
+        <div class="subtitle">Período: <strong>${periodoLabel()}</strong></div>
       </div>
       <div style="text-align:right;font-size:10px;color:#64748b">
         <div>Usuario: Nicolás Doria</div>
@@ -2355,6 +2409,7 @@ export default function Map() {
         <h1>💧 WATERGIS</h1>
         <div class="subtitle">INFORME DE RED DE DISTRIBUCIÓN</div>
         <div class="subtitle"><strong>${titulo2}</strong></div>
+        <div class="subtitle">Período: <strong>${periodoLabel()}</strong></div>
       </div>
       <div style="text-align:right;font-size:10px;color:#64748b">
         <div>Usuario: Nicolás Doria</div>
@@ -2515,6 +2570,7 @@ export default function Map() {
         <h1>🏭 WATERGIS</h1>
         <div class="subtitle">INFORME DE EFLUENTES CLOACALES — CONTROL DE VUELCOS</div>
         <div class="subtitle"><strong>${titulo2}</strong></div>
+        <div class="subtitle">Período: <strong>${periodoLabel()}</strong></div>
       </div>
       <div style="text-align:right;font-size:10px;color:#64748b">
         <div>Usuario: Nicolás Doria</div>
@@ -2842,6 +2898,51 @@ export default function Map() {
                     <option value="ALTO">{t.alto}</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Período del informe */}
+              <div className="mb-4">
+                <p className="text-xs text-slate-400 mb-1.5">Período del informe</p>
+                <div className="grid grid-cols-2 gap-1.5 mb-2">
+                  {([
+                    {key:"TODO", label:"Histórico completo"},
+                    {key:"MES", label:"Último mes"},
+                    {key:"TRIMESTRE", label:"Último trimestre"},
+                    {key:"ANIO", label:"Año actual"},
+                  ] as const).map(op => (
+                    <button
+                      key={op.key}
+                      onClick={()=>setPeriodoInforme(op.key)}
+                      className={`rounded-lg border py-2 text-[11px] font-semibold transition-colors ${
+                        periodoInforme===op.key ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
+                      }`}
+                    >
+                      {op.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={()=>setPeriodoInforme("CUSTOM")}
+                  className={`w-full rounded-lg border py-2 text-[11px] font-semibold transition-colors mb-2 ${
+                    periodoInforme==="CUSTOM" ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
+                  }`}
+                >
+                  Rango personalizado
+                </button>
+                {periodoInforme==="CUSTOM" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] text-slate-500 mb-1">Desde</p>
+                      <input type="date" value={fechaDesdeInf} onChange={e=>setFechaDesdeInf(e.target.value)}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs text-white"/>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 mb-1">Hasta</p>
+                      <input type="date" value={fechaHastaInf} onChange={e=>setFechaHastaInf(e.target.value)}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs text-white"/>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Preview */}
@@ -3419,6 +3520,32 @@ export default function Map() {
                   <option value="TODOS">Todos los efluentes</option>
                   {efluentesUnicosLista.map(e=><option key={e} value={e}>{e}</option>)}
                 </select>
+              </div>
+            )}
+
+            {/* Período del informe — compacto, comparte estado con el panel de Informes */}
+            {(tipoPunto==="DIQUE"||tipoPunto==="RED"||tipoPunto==="EFLUENTE") && esAutenticado && (
+              <div className="mt-2">
+                <p className="text-[10px] text-slate-500 mb-1">Período</p>
+                <select
+                  value={periodoInforme}
+                  onChange={e=>setPeriodoInforme(e.target.value as any)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-[11px] text-white"
+                >
+                  <option value="TODO">Histórico completo</option>
+                  <option value="MES">Último mes</option>
+                  <option value="TRIMESTRE">Último trimestre</option>
+                  <option value="ANIO">Año actual</option>
+                  <option value="CUSTOM">Rango personalizado...</option>
+                </select>
+                {periodoInforme==="CUSTOM" && (
+                  <div className="grid grid-cols-2 gap-1.5 mt-1.5">
+                    <input type="date" value={fechaDesdeInf} onChange={e=>setFechaDesdeInf(e.target.value)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-[10px] text-white"/>
+                    <input type="date" value={fechaHastaInf} onChange={e=>setFechaHastaInf(e.target.value)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-[10px] text-white"/>
+                  </div>
+                )}
               </div>
             )}
 
