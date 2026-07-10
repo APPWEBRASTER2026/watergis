@@ -66,10 +66,13 @@ const CATEGORIAS: { key: Categoria; label: string; emoji: string; color: string 
 const SESSION_KEY = "watergis_campo_session";
 const QUEUE_KEY = "watergis_campo_queue";
 const ENVIADOS_KEY = "watergis_campo_enviados";
+const PREFS_KEY = "watergis_campo_prefs";
 
 type Sesion = { user: string; nombre: string };
 type ItemCola = { id: string; form: FormCampo; categoria: Categoria; creadoEn: string; intentos: number };
-type ItemEnviado = { id: string; punto: string; categoria: Categoria; hora: string; estado: "enviado" | "pendiente" | "error" };
+type ItemEnviado = { id: string; punto: string; categoria: Categoria; hora: string; estado: "enviado" | "pendiente" | "error"; usuario?: string };
+type Prefs = { confirmarEnvio: boolean; temaClaro: boolean; letraGrande: boolean; precisionMinima: number };
+const PREFS_DEFAULT: Prefs = { confirmarEnvio: true, temaClaro: false, letraGrande: false, precisionMinima: 0 };
 
 // ======================================================
 // COMPONENTE PRINCIPAL
@@ -77,15 +80,18 @@ type ItemEnviado = { id: string; punto: string; categoria: Categoria; hora: stri
 export default function CampoPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [cargandoSesion, setCargandoSesion] = useState(true);
-  const [pantalla, setPantalla] = useState<"menu" | "form" | "enviados" | "usuario">("menu");
+  const [pantalla, setPantalla] = useState<"menu" | "form" | "enviados" | "usuario" | "config">("menu");
   const [categoria, setCategoria] = useState<Categoria>("AGUA");
   const [online, setOnline] = useState(true);
   const [colaLength, setColaLength] = useState(0);
+  const [prefs, setPrefs] = useState<Prefs>(PREFS_DEFAULT);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
       if (saved) setSesion(JSON.parse(saved));
+      const savedPrefs = localStorage.getItem(PREFS_KEY);
+      if (savedPrefs) setPrefs({ ...PREFS_DEFAULT, ...JSON.parse(savedPrefs) });
     } catch {}
     setCargandoSesion(false);
 
@@ -170,6 +176,14 @@ export default function CampoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sesion]);
 
+  const actualizarPrefs = (nuevas: Partial<Prefs>) => {
+    setPrefs(prev => {
+      const actualizado = { ...prev, ...nuevas };
+      try { localStorage.setItem(PREFS_KEY, JSON.stringify(actualizado)); } catch {}
+      return actualizado;
+    });
+  };
+
   const handleLogout = () => {
     setSesion(null);
     localStorage.removeItem(SESSION_KEY);
@@ -177,15 +191,18 @@ export default function CampoPage() {
 
   if (cargandoSesion) return null;
 
+  const colorFondo = prefs.temaClaro ? "#f1f5f9" : "#020a0d";
+
   return (
-    <div style={{ minHeight: "100vh", background: "#020a0d", fontFamily: "sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: colorFondo, fontFamily: "sans-serif", fontSize: prefs.letraGrande ? "115%" : "100%" }}>
       {!sesion ? (
         <LoginCampo onLogin={(s) => { setSesion(s); localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }} />
       ) : (
         <>
-          <HeaderCampo online={online} colaLength={colaLength} onUsuario={() => setPantalla("usuario")} onHome={() => setPantalla("menu")} />
+          <HeaderCampo online={online} colaLength={colaLength} temaClaro={prefs.temaClaro} onUsuario={() => setPantalla("usuario")} onConfig={() => setPantalla("config")} onHome={() => setPantalla("menu")} />
           {pantalla === "menu" && (
             <MenuCampo
+              temaClaro={prefs.temaClaro}
               onElegir={(c) => { setCategoria(c); setPantalla("form"); }}
               onVerEnviados={() => setPantalla("enviados")}
               cantidadEnviadosHoy={leerEnviados().filter((e) => e.hora.slice(0, 10) === new Date().toISOString().slice(0, 10)).length}
@@ -196,14 +213,17 @@ export default function CampoPage() {
               categoria={categoria}
               usuario={sesion.user}
               online={online}
+              confirmarEnvio={prefs.confirmarEnvio}
+              precisionMinima={prefs.precisionMinima}
+              temaClaro={prefs.temaClaro}
               onVolver={() => setPantalla("menu")}
               onEnviar={(form, ok, id) => {
                 if (ok) {
-                  agregarEnviado({ id, punto: form.punto_de_muestreo, categoria, hora: new Date().toISOString(), estado: "enviado" });
+                  agregarEnviado({ id, punto: form.punto_de_muestreo, categoria, hora: new Date().toISOString(), estado: "enviado", usuario: sesion.nombre });
                 } else {
                   const cola = leerCola();
                   guardarCola([...cola, { id, form, categoria, creadoEn: new Date().toISOString(), intentos: 0 }]);
-                  agregarEnviado({ id, punto: form.punto_de_muestreo, categoria, hora: new Date().toISOString(), estado: "pendiente" });
+                  agregarEnviado({ id, punto: form.punto_de_muestreo, categoria, hora: new Date().toISOString(), estado: "pendiente", usuario: sesion.nombre });
                 }
                 setPantalla("menu");
               }}
@@ -220,6 +240,9 @@ export default function CampoPage() {
           {pantalla === "usuario" && (
             <PantallaUsuario sesion={sesion} onVolver={() => setPantalla("menu")} onLogout={handleLogout} />
           )}
+          {pantalla === "config" && (
+            <PantallaConfig prefs={prefs} colaLength={colaLength} onCambiar={actualizarPrefs} onVolver={() => setPantalla("menu")} onSincronizarAhora={sincronizarCola} />
+          )}
         </>
       )}
     </div>
@@ -229,10 +252,13 @@ export default function CampoPage() {
 // ======================================================
 // HEADER
 // ======================================================
-function HeaderCampo({ online, colaLength, onUsuario, onHome }: { online: boolean; colaLength: number; onUsuario: () => void; onHome: () => void }) {
+function HeaderCampo({ online, colaLength, temaClaro, onUsuario, onConfig, onHome }: { online: boolean; colaLength: number; temaClaro: boolean; onUsuario: () => void; onConfig: () => void; onHome: () => void }) {
+  const bg = temaClaro ? "#ffffff" : "#0a1622";
+  const border = temaClaro ? "#e2e8f0" : "#1e293b";
+  const texto = temaClaro ? "#0f172a" : "#fff";
   return (
-    <div style={{ background: "#0a1622", padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #1e293b", position: "sticky", top: 0, zIndex: 10 }}>
-      <div onClick={onHome} style={{ fontSize: 14, fontWeight: 700, color: "#fff", cursor: "pointer" }}>💧 WATERGIS</div>
+    <div style={{ background: bg, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${border}`, position: "sticky", top: 0, zIndex: 10 }}>
+      <div onClick={onHome} style={{ fontSize: 14, fontWeight: 700, color: texto, cursor: "pointer" }}>💧 WATERGIS</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 10, color: online ? "#4ade80" : "#fdba74" }}>
           {online ? "🟢 Online" : "🔴 Sin señal"}
@@ -242,6 +268,7 @@ function HeaderCampo({ online, colaLength, onUsuario, onHome }: { online: boolea
             {colaLength} pendiente{colaLength > 1 ? "s" : ""}
           </span>
         )}
+        <div onClick={onConfig} style={{ width: 30, height: 30, borderRadius: "50%", background: temaClaro ? "#f1f5f9" : "#111c2b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, cursor: "pointer" }}>⚙️</div>
         <div onClick={onUsuario} style={{ width: 30, height: 30, borderRadius: "50%", background: "#0e4f68", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, cursor: "pointer" }}>👤</div>
       </div>
     </div>
@@ -317,25 +344,29 @@ function LoginCampo({ onLogin }: { onLogin: (s: Sesion) => void }) {
 // ======================================================
 // MENÚ PRINCIPAL
 // ======================================================
-function MenuCampo({ onElegir, onVerEnviados, cantidadEnviadosHoy }: { onElegir: (c: Categoria) => void; onVerEnviados: () => void; cantidadEnviadosHoy: number }) {
+function MenuCampo({ temaClaro, onElegir, onVerEnviados, cantidadEnviadosHoy }: { temaClaro: boolean; onElegir: (c: Categoria) => void; onVerEnviados: () => void; cantidadEnviadosHoy: number }) {
   const subtitulos: Record<Categoria, string> = {
     DIQUE: "pH, TDS, OD, Clorofila, BGA",
     EFLUENTE: "TDS, pH, OD, Saturación",
     AGUA: "pH, TDS, Turbidez, Cloro libre",
   };
+  const cardBg = temaClaro ? "#ffffff" : "#0a1622";
+  const cardBorder = temaClaro ? "#e2e8f0" : "#1e293b";
+  const texto = temaClaro ? "#0f172a" : "#fff";
+  const textoMuted = temaClaro ? "#64748b" : "#94a3b8";
   return (
     <div style={{ padding: "20px 18px" }}>
-      <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 16 }}>¿Qué datos vas a cargar?</div>
+      <div style={{ fontSize: 13, color: textoMuted, marginBottom: 16 }}>¿Qué datos vas a cargar?</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {CATEGORIAS.map((c) => (
           <div
             key={c.key}
             onClick={() => onElegir(c.key)}
-            style={{ border: "1px solid #1e293b", background: "#0a1622", borderRadius: 14, padding: 16, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
+            style={{ border: `1px solid ${cardBorder}`, background: cardBg, borderRadius: 14, padding: 16, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
           >
             <div style={{ width: 44, height: 44, borderRadius: 12, background: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{c.emoji}</div>
             <div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#fff" }}>{c.label}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: texto }}>{c.label}</div>
               <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>{subtitulos[c.key]}</div>
             </div>
           </div>
@@ -343,7 +374,7 @@ function MenuCampo({ onElegir, onVerEnviados, cantidadEnviadosHoy }: { onElegir:
       </div>
       <div
         onClick={onVerEnviados}
-        style={{ marginTop: 20, border: "1px dashed #1e293b", borderRadius: 12, padding: 12, textAlign: "center", fontSize: 10.5, color: "#64748b", cursor: "pointer" }}
+        style={{ marginTop: 20, border: `1px dashed ${cardBorder}`, borderRadius: 12, padding: 12, textAlign: "center", fontSize: 10.5, color: textoMuted, cursor: "pointer" }}
       >
         📋 Ver datos enviados hoy ({cantidadEnviadosHoy})
       </div>
@@ -355,9 +386,9 @@ function MenuCampo({ onElegir, onVerEnviados, cantidadEnviadosHoy }: { onElegir:
 // FORMULARIO
 // ======================================================
 function FormularioCampo({
-  categoria, usuario, online, onVolver, onEnviar,
+  categoria, usuario, online, confirmarEnvio, precisionMinima, temaClaro, onVolver, onEnviar,
 }: {
-  categoria: Categoria; usuario: string; online: boolean;
+  categoria: Categoria; usuario: string; online: boolean; confirmarEnvio: boolean; precisionMinima: number; temaClaro: boolean;
   onVolver: () => void;
   onEnviar: (form: FormCampo, ok: boolean, id: string) => void;
 }) {
@@ -367,6 +398,7 @@ function FormularioCampo({
   const [precision, setPrecision] = useState<number | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
 
   useEffect(() => {
     if (!("geolocation" in navigator)) { setGpsEstado("error"); return; }
@@ -400,14 +432,7 @@ function FormularioCampo({
   const parametros = gruposParametros[categoria];
   const titulo = categoria === "DIQUE" ? "🌊 Dique" : categoria === "EFLUENTE" ? "🏭 Efluente" : "💧 Agua potable";
 
-  const handleEnviar = async () => {
-    setError("");
-    if (!form.localidad.trim() || !form.departamento.trim() || !form.punto_de_muestreo.trim()) {
-      setError("Completá Localidad, Departamento y Sitio de extracción."); return;
-    }
-    if (!form.latitud || !form.longitud) {
-      setError("Todavía no se detectó la ubicación GPS. Esperá unos segundos o reintentá."); return;
-    }
+  const enviarAhora = async () => {
     setEnviando(true);
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -429,6 +454,22 @@ function FormularioCampo({
       setEnviando(false);
       onEnviar(form, false, id);
     }
+  };
+
+  const handleEnviar = () => {
+    setError("");
+    if (!form.localidad.trim() || !form.departamento.trim() || !form.punto_de_muestreo.trim()) {
+      setError("Completá Localidad, Departamento y Sitio de extracción."); return;
+    }
+    if (!form.latitud || !form.longitud) {
+      setError("Todavía no se detectó la ubicación GPS. Esperá unos segundos o reintentá."); return;
+    }
+    if (precisionMinima > 0 && precision !== null && precision > precisionMinima) {
+      setError(`La precisión del GPS es de ${precision}m — necesitás ${precisionMinima}m o mejor. Esperá unos segundos y volvé a intentar.`);
+      return;
+    }
+    if (confirmarEnvio) { setMostrarConfirmacion(true); return; }
+    enviarAhora();
   };
 
   return (
@@ -488,7 +529,9 @@ function FormularioCampo({
           {gpsEstado === "ok" && (
             <>
               <div style={{ fontSize: 11.5, color: "#e2e8f0" }}>{form.latitud}, {form.longitud}</div>
-              <div style={{ fontSize: 9, color: "#4ade80", marginTop: 2 }}>✓ Precisión: {precision}m</div>
+              <div style={{ fontSize: 9, color: (precisionMinima > 0 && precision !== null && precision > precisionMinima) ? "#fca5a5" : "#4ade80", marginTop: 2 }}>
+                {(precisionMinima > 0 && precision !== null && precision > precisionMinima) ? "⚠️" : "✓"} Precisión: {precision}m{precisionMinima > 0 ? ` (mín. requerido: ${precisionMinima}m)` : ""}
+              </div>
             </>
           )}
           {gpsEstado === "error" && <div style={{ fontSize: 11, color: "#fca5a5" }}>No se pudo obtener el GPS. Revisá los permisos de ubicación.</div>}
@@ -542,6 +585,21 @@ function FormularioCampo({
           Si te falta un análisis, dejalo vacío y cargalo después desde la web.
         </div>
       </div>
+
+      {mostrarConfirmacion && (
+        <div style={{ minHeight: 200, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", inset: 0, zIndex: 200 }}>
+          <div style={{ width: "85%", maxWidth: 300, background: "#0a1622", border: "1px solid #1e293b", borderRadius: 16, padding: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 6 }}>¿Confirmás el envío?</div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 14 }}>
+              {form.punto_de_muestreo || "Punto sin nombre"} — {form.localidad}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <div onClick={() => setMostrarConfirmacion(false)} style={{ flex: 1, border: "1px solid #334155", borderRadius: 10, padding: 10, textAlign: "center", fontSize: 11.5, color: "#94a3b8", cursor: "pointer" }}>Revisar</div>
+              <div onClick={() => { setMostrarConfirmacion(false); enviarAhora(); }} style={{ flex: 1, background: "#22d3ee", borderRadius: 10, padding: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "#022c33", cursor: "pointer" }}>Confirmar</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -568,7 +626,9 @@ function PantallaEnviados({ enviados, cola, onVolver, onReintentar }: { enviados
           <div key={e.id} style={{ border: "1px solid #1e293b", background: "#0a1622", borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ fontSize: 11, color: "#e2e8f0" }}>{e.punto || "(sin nombre)"}</div>
-              <div style={{ fontSize: 9, color: "#64748b" }}>{new Date(e.hora).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {labelCat[e.categoria]}</div>
+              <div style={{ fontSize: 9, color: "#64748b" }}>
+                {new Date(e.hora).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {labelCat[e.categoria]}{e.usuario ? ` · 👤 ${e.usuario}` : ""}
+              </div>
             </div>
             <div style={{ fontSize: 9, color: e.estado === "enviado" ? "#4ade80" : e.estado === "pendiente" ? "#fdba74" : "#fca5a5" }}>
               {e.estado === "enviado" ? "✓ En el mapa" : e.estado === "pendiente" ? "⏳ Pendiente" : "⚠ Error"}
@@ -654,6 +714,102 @@ function PantallaUsuario({ sesion, onVolver, onLogout }: { sesion: Sesion; onVol
         <div onClick={onLogout} style={{ border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: 11, fontSize: 11, color: "#fca5a5", cursor: "pointer" }}>
           ↪ Cerrar sesión
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ======================================================
+// PANTALLA — CONFIGURACIÓN
+// ======================================================
+function Toggle({ activo, onChange }: { activo: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div
+      onClick={() => onChange(!activo)}
+      style={{ width: 42, height: 24, borderRadius: 12, background: activo ? "#22d3ee" : "#334155", position: "relative", cursor: "pointer", flexShrink: 0, transition: "background 0.15s" }}
+    >
+      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: activo ? 21 : 3, transition: "left 0.15s" }} />
+    </div>
+  );
+}
+
+function PantallaConfig({
+  prefs, colaLength, onCambiar, onVolver, onSincronizarAhora,
+}: {
+  prefs: Prefs; colaLength: number;
+  onCambiar: (nuevas: Partial<Prefs>) => void;
+  onVolver: () => void;
+  onSincronizarAhora: () => void;
+}) {
+  const [sincronizando, setSincronizando] = useState(false);
+  const filaStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: "1px solid #1e293b" };
+
+  return (
+    <div>
+      <div style={{ background: "#0a1622", padding: "14px 18px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #1e293b" }}>
+        <div onClick={onVolver} style={{ fontSize: 16, color: "#67e8f9", cursor: "pointer" }}>←</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>⚙️ Configuración</div>
+      </div>
+
+      <div style={{ padding: "16px 18px" }}>
+
+        <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Carga de datos</div>
+        <div style={filaStyle}>
+          <div>
+            <div style={{ fontSize: 12, color: "#e2e8f0" }}>Confirmar antes de enviar</div>
+            <div style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Evita toques accidentales</div>
+          </div>
+          <Toggle activo={prefs.confirmarEnvio} onChange={(v) => onCambiar({ confirmarEnvio: v })} />
+        </div>
+
+        <div style={{ padding: "13px 0", borderBottom: "1px solid #1e293b" }}>
+          <div style={{ fontSize: 12, color: "#e2e8f0", marginBottom: 8 }}>Precisión mínima del GPS</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[0, 10, 20, 50].map((v) => (
+              <div
+                key={v}
+                onClick={() => onCambiar({ precisionMinima: v })}
+                style={{
+                  flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 8, fontSize: 10.5, cursor: "pointer",
+                  border: `1px solid ${prefs.precisionMinima === v ? "#22d3ee" : "#334155"}`,
+                  background: prefs.precisionMinima === v ? "rgba(34,211,238,0.15)" : "transparent",
+                  color: prefs.precisionMinima === v ? "#67e8f9" : "#64748b",
+                }}
+              >
+                {v === 0 ? "Sin límite" : `${v}m`}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, margin: "18px 0 4px" }}>Apariencia</div>
+        <div style={filaStyle}>
+          <div style={{ fontSize: 12, color: "#e2e8f0" }}>Tema claro</div>
+          <Toggle activo={prefs.temaClaro} onChange={(v) => onCambiar({ temaClaro: v })} />
+        </div>
+        <div style={filaStyle}>
+          <div>
+            <div style={{ fontSize: 12, color: "#e2e8f0" }}>Letra más grande</div>
+            <div style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Para sol fuerte o guantes de trabajo</div>
+          </div>
+          <Toggle activo={prefs.letraGrande} onChange={(v) => onCambiar({ letraGrande: v })} />
+        </div>
+
+        <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, margin: "18px 0 4px" }}>Sincronización</div>
+        <div style={{ padding: "13px 0", borderBottom: "1px solid #1e293b" }}>
+          <div style={{ fontSize: 12, color: "#e2e8f0" }}>
+            {colaLength === 0 ? "Todo sincronizado ✓" : `${colaLength} dato${colaLength > 1 ? "s" : ""} pendiente${colaLength > 1 ? "s" : ""} de subir`}
+          </div>
+          {colaLength > 0 && (
+            <div
+              onClick={async () => { setSincronizando(true); await onSincronizarAhora(); setSincronizando(false); }}
+              style={{ marginTop: 8, border: "1px solid #22d3ee", borderRadius: 8, padding: 8, textAlign: "center", fontSize: 11, color: "#67e8f9", cursor: "pointer" }}
+            >
+              {sincronizando ? "Sincronizando..." : "↻ Sincronizar ahora"}
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );
