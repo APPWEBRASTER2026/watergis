@@ -71,8 +71,8 @@ const PREFS_KEY = "watergis_campo_prefs";
 type Sesion = { user: string; nombre: string };
 type ItemCola = { id: string; form: FormCampo; categoria: Categoria; creadoEn: string; intentos: number };
 type ItemEnviado = { id: string; punto: string; categoria: Categoria; hora: string; estado: "enviado" | "pendiente" | "error"; usuario?: string };
-type Prefs = { confirmarEnvio: boolean; temaClaro: boolean; letraGrande: boolean; precisionMinima: number };
-const PREFS_DEFAULT: Prefs = { confirmarEnvio: true, temaClaro: false, letraGrande: false, precisionMinima: 0 };
+type Prefs = { confirmarEnvio: boolean; temaClaro: boolean; tamanoLetra: number; precisionMinima: number };
+const PREFS_DEFAULT: Prefs = { confirmarEnvio: true, temaClaro: false, tamanoLetra: 100, precisionMinima: 10 };
 
 // ======================================================
 // COMPONENTE PRINCIPAL
@@ -194,7 +194,7 @@ export default function CampoPage() {
   const colorFondo = prefs.temaClaro ? "#f1f5f9" : "#020a0d";
 
   return (
-    <div style={{ minHeight: "100vh", background: colorFondo, fontFamily: "sans-serif", fontSize: prefs.letraGrande ? "115%" : "100%" }}>
+    <div style={{ minHeight: "100vh", background: colorFondo, fontFamily: "sans-serif", fontSize: `${prefs.tamanoLetra}%` }}>
       {!sesion ? (
         <LoginCampo onLogin={(s) => { setSesion(s); localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }} />
       ) : (
@@ -787,12 +787,26 @@ function PantallaConfig({
           <div style={{ fontSize: 12, color: "#e2e8f0" }}>Tema claro</div>
           <Toggle activo={prefs.temaClaro} onChange={(v) => onCambiar({ temaClaro: v })} />
         </div>
-        <div style={filaStyle}>
-          <div>
-            <div style={{ fontSize: 12, color: "#e2e8f0" }}>Letra más grande</div>
-            <div style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Para sol fuerte o guantes de trabajo</div>
+        <div style={{ padding: "13px 0", borderBottom: "1px solid #1e293b" }}>
+          <div style={{ fontSize: 12, color: "#e2e8f0", marginBottom: 2 }}>Tamaño de letra</div>
+          <div style={{ fontSize: 9.5, color: "#64748b", marginBottom: 8 }}>Para sol fuerte o guantes de trabajo</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[100, 115, 130, 150].map((v) => (
+              <div
+                key={v}
+                onClick={() => onCambiar({ tamanoLetra: v })}
+                style={{
+                  flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 8, cursor: "pointer",
+                  fontSize: 10.5 + (v - 100) / 25,
+                  border: `1px solid ${prefs.tamanoLetra === v ? "#22d3ee" : "#334155"}`,
+                  background: prefs.tamanoLetra === v ? "rgba(34,211,238,0.15)" : "transparent",
+                  color: prefs.tamanoLetra === v ? "#67e8f9" : "#64748b",
+                }}
+              >
+                {v === 100 ? "Normal" : v === 115 ? "Grande" : v === 130 ? "Muy grande" : "Máxima"}
+              </div>
+            ))}
           </div>
-          <Toggle activo={prefs.letraGrande} onChange={(v) => onCambiar({ letraGrande: v })} />
         </div>
 
         <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, margin: "18px 0 4px" }}>Sincronización</div>
