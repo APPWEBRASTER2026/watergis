@@ -194,7 +194,7 @@ export default function CampoPage() {
   const colorFondo = prefs.temaClaro ? "#f1f5f9" : "#020a0d";
 
   return (
-    <div style={{ minHeight: "100vh", background: colorFondo, fontFamily: "sans-serif", fontSize: `${prefs.tamanoLetra}%` }}>
+    <div style={{ minHeight: "100vh", background: colorFondo, fontFamily: "sans-serif", zoom: prefs.tamanoLetra / 100 } as React.CSSProperties}>
       {!sesion ? (
         <LoginCampo onLogin={(s) => { setSesion(s); localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }} />
       ) : (
@@ -402,15 +402,26 @@ function FormularioCampo({
 
   useEffect(() => {
     if (!("geolocation" in navigator)) { setGpsEstado("error"); return; }
-    navigator.geolocation.getCurrentPosition(
+
+    let mejorPrecision = Infinity;
+
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        setForm((prev) => ({ ...prev, latitud: pos.coords.latitude.toFixed(6), longitud: pos.coords.longitude.toFixed(6) }));
-        setPrecision(Math.round(pos.coords.accuracy));
+        const precisionActual = Math.round(pos.coords.accuracy);
+        // Solo actualizamos si esta lectura es igual o mejor que la mejor que ya tenemos —
+        // el GPS va afinando con el tiempo, así que descartamos lecturas peores que ya superamos.
+        if (precisionActual <= mejorPrecision) {
+          mejorPrecision = precisionActual;
+          setForm((prev) => ({ ...prev, latitud: pos.coords.latitude.toFixed(6), longitud: pos.coords.longitude.toFixed(6) }));
+          setPrecision(precisionActual);
+        }
         setGpsEstado("ok");
       },
       () => setGpsEstado("error"),
-      { enableHighAccuracy: true, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   useEffect(() => {
@@ -532,6 +543,9 @@ function FormularioCampo({
               <div style={{ fontSize: 9, color: (precisionMinima > 0 && precision !== null && precision > precisionMinima) ? "#fca5a5" : "#4ade80", marginTop: 2 }}>
                 {(precisionMinima > 0 && precision !== null && precision > precisionMinima) ? "⚠️" : "✓"} Precisión: {precision}m{precisionMinima > 0 ? ` (mín. requerido: ${precisionMinima}m)` : ""}
               </div>
+              {precisionMinima > 0 && precision !== null && precision > precisionMinima && (
+                <div style={{ fontSize: 8.5, color: "#94a3b8", marginTop: 2 }}>Afinando señal, esperá unos segundos...</div>
+              )}
             </>
           )}
           {gpsEstado === "error" && <div style={{ fontSize: 11, color: "#fca5a5" }}>No se pudo obtener el GPS. Revisá los permisos de ubicación.</div>}
