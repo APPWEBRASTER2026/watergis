@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Papa from "papaparse";
 
 // ======================================================
 // TIPOS Y CONSTANTES
@@ -69,6 +70,8 @@ const ENVIADOS_KEY = "watergis_campo_enviados";
 const PREFS_KEY = "watergis_campo_prefs";
 
 type Sesion = { user: string; nombre: string };
+type PuntoSugerido = { punto: string; localidad: string; departamento: string; fuente: string; tipo_punto: string };
+
 type ItemCola = { id: string; form: FormCampo; categoria: Categoria; creadoEn: string; intentos: number };
 type ItemEnviado = { id: string; punto: string; categoria: Categoria; hora: string; estado: "enviado" | "pendiente" | "error"; usuario?: string };
 type Prefs = { confirmarEnvio: boolean; temaClaro: boolean; tamanoLetra: number; precisionMinima: number };
@@ -400,6 +403,75 @@ function FormularioCampo({
   const [error, setError] = useState("");
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
 
+  // ── Puntos ya existentes, para autocompletar y evitar duplicados por error de tipeo ──
+  const [puntosExistentes, setPuntosExistentes] = useState<PuntoSugerido[]>([]);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+  const [puntoBloqueado, setPuntoBloqueado] = useState(false); // true si se eligió uno existente
+
+  useEffect(() => {
+    const puntosCSV: PuntoSugerido[] = [];
+    Papa.parse("/pozos.csv", {
+      download: true, header: true, skipEmptyLines: true,
+      complete: (r) => {
+        (r.data as any[]).forEach((row) => {
+          if (row.PUNTO_DE_MUESTREO) {
+            puntosCSV.push({
+              punto: row.PUNTO_DE_MUESTREO, localidad: row.Localidad || "", departamento: row.Departamento || "",
+              fuente: row.Fuente || "", tipo_punto: row.Tipo_Punto || "POZO",
+            });
+          }
+        });
+        cargarDeDB(puntosCSV);
+      },
+      error: () => cargarDeDB(puntosCSV),
+    });
+    const cargarDeDB = async (base: PuntoSugerido[]) => {
+      try {
+        const res = await fetch("/api/puntos");
+        const data = await res.json();
+        const puntosDB: PuntoSugerido[] = data.ok
+          ? (data.puntos as any[]).map((p) => ({
+              punto: p.punto_de_muestreo, localidad: p.localidad, departamento: p.departamento,
+              fuente: p.fuente, tipo_punto: p.tipo_punto,
+            }))
+          : [];
+        // Combinamos y sacamos duplicados por nombre de punto, quedándonos con la última versión
+        const combinados = [...base, ...puntosDB];
+        const unicos = new Map<string, PuntoSugerido>();
+        combinados.forEach((p) => unicos.set(p.punto.trim().toLowerCase(), p));
+        setPuntosExistentes(Array.from(unicos.values()));
+      } catch {
+        setPuntosExistentes(base);
+      }
+    };
+  }, []);
+
+  // Qué tipo_punto corresponde a esta categoría, para no sugerir puntos de otro tipo
+  const tiposValidos = categoria === "AGUA" ? ["POZO", "RED"] : categoria === "DIQUE" ? ["DIQUE"] : ["EFLUENTE"];
+  const sugerenciasFiltradas = form.punto_de_muestreo.trim().length >= 2
+    ? puntosExistentes
+        .filter((p) => tiposValidos.includes((p.tipo_punto || "").toUpperCase()))
+        .filter((p) => p.punto.toLowerCase().includes(form.punto_de_muestreo.trim().toLowerCase()))
+        .slice(0, 6)
+    : [];
+
+  const elegirPuntoExistente = (p: PuntoSugerido) => {
+    setForm((prev) => ({
+      ...prev,
+      punto_de_muestreo: p.punto,
+      localidad: p.localidad,
+      departamento: p.departamento,
+      fuente: p.fuente || prev.fuente,
+      tipo_punto: p.tipo_punto || prev.tipo_punto,
+      // Las coordenadas NO se tocan: se mantiene la lectura GPS fresca del lugar donde estás parado ahora.
+    }));
+    if (p.tipo_punto === "RED" && ["SUBTERRANEA", "SUPERFICIAL", "MEZCLA"].includes((p.fuente || "").toUpperCase())) {
+      setFuenteUI("RED");
+    }
+    setPuntoBloqueado(true);
+    setMostrarSugerencias(false);
+  };
+
   useEffect(() => {
     if (!("geolocation" in navigator)) { setGpsEstado("error"); return; }
 
@@ -563,10 +635,38 @@ function FormularioCampo({
               style={{ width: "100%", border: "1px solid #1e293b", background: "#0a1622", borderRadius: 8, padding: 8, color: "#e2e8f0", fontSize: 11, boxSizing: "border-box" }} />
           </div>
         </div>
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 9, color: "#64748b", marginBottom: 3 }}>Sitio de extracción *</div>
-          <input value={form.punto_de_muestreo} onChange={set("punto_de_muestreo")} placeholder="Ej: Pozo N°3, Dique Ipizca..."
-            style={{ width: "100%", border: "1px solid #22d3ee", background: "#0a1622", borderRadius: 8, padding: 8, color: "#e2e8f0", fontSize: 11, boxSizing: "border-box" }} />
+        <div style={{ marginBottom: 10, position: "relative" }}>
+          <div style={{ fontSize: 9, color: "#64748b", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>
+            <span>Sitio de extracción *</span>
+            {puntoBloqueado && (
+              <span onClick={() => setPuntoBloqueado(false)} style={{ color: "#67e8f9", cursor: "pointer" }}>✓ punto existente · cambiar</span>
+            )}
+          </div>
+          <input
+            value={form.punto_de_muestreo}
+            disabled={puntoBloqueado}
+            onChange={(e) => { set("punto_de_muestreo")(e); setMostrarSugerencias(true); }}
+            onFocus={() => setMostrarSugerencias(true)}
+            placeholder="Ej: Pozo N°3, Dique Ipizca..."
+            style={{ width: "100%", border: "1px solid #22d3ee", background: puntoBloqueado ? "#0d1b28" : "#0a1622", borderRadius: 8, padding: 8, color: puntoBloqueado ? "#67e8f9" : "#e2e8f0", fontSize: 11, boxSizing: "border-box" }}
+          />
+          {mostrarSugerencias && !puntoBloqueado && sugerenciasFiltradas.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "#0a1622", border: "1px solid #1e293b", borderRadius: 8, overflow: "hidden", zIndex: 20 }}>
+              {sugerenciasFiltradas.map((p) => (
+                <div
+                  key={p.punto}
+                  onClick={() => elegirPuntoExistente(p)}
+                  style={{ padding: "8px 10px", borderBottom: "1px solid #1e293b", cursor: "pointer" }}
+                >
+                  <div style={{ fontSize: 10.5, color: "#e2e8f0" }}>{p.punto}</div>
+                  <div style={{ fontSize: 8.5, color: "#64748b", marginTop: 1 }}>{p.localidad} · {p.departamento}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!puntoBloqueado && form.punto_de_muestreo.trim().length >= 2 && sugerenciasFiltradas.length === 0 && (
+            <div style={{ fontSize: 8.5, color: "#64748b", marginTop: 3 }}>No hay puntos existentes con ese nombre — se va a cargar como punto nuevo.</div>
+          )}
         </div>
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 9, color: "#64748b", marginBottom: 3 }}>Fecha</div>
