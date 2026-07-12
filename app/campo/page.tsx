@@ -197,7 +197,7 @@ export default function CampoPage() {
   const colorFondo = prefs.temaClaro ? "#f1f5f9" : "#020a0d";
 
   return (
-    <div style={{ minHeight: "100vh", background: colorFondo, fontFamily: "sans-serif", zoom: prefs.tamanoLetra / 100 } as React.CSSProperties}>
+    <div style={{ minHeight: "100vh", maxHeight: "100vh", overflowY: "auto", WebkitOverflowScrolling: "touch", background: colorFondo, fontFamily: "sans-serif", zoom: prefs.tamanoLetra / 100 } as React.CSSProperties}>
       {!sesion ? (
         <LoginCampo onLogin={(s) => { setSesion(s); localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }} />
       ) : (
