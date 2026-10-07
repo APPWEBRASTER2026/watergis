@@ -81,6 +81,16 @@ const greyIcon = new L.Icon({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
   iconSize: [25, 41], iconAnchor: [12, 41],
 });
+const yellowIcon = new L.Icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41], iconAnchor: [12, 41],
+});
+const blackIcon = new L.Icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-black.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41], iconAnchor: [12, 41],
+});
 
 // ======================================================
 // TYPES
@@ -96,6 +106,7 @@ type Punto = {
   OD_mg_l: string; Sat_O2_pct: string; Clorofila_ug_l: string;
   Algas_BGA: string; Cloro_libre_mg_l: string;
   DBO_mg_l: string; DQO_mg_l: string; Detergentes_mg_l: string; Grasas_Aceites_mg_l: string;
+  Floracion_Visible: string;
   Latitud: string; Longitud: string;
 };
 
@@ -332,6 +343,34 @@ const limiteFluorPorTemp = (temp: number): {limInf: number; limSup: number; rang
 const LIM_HEAT_AS  = 0.01;   // mg/L
 const LIM_HEAT_TDS = 1500;   // mg/L
 
+// ── Semáforo de Cianobacterias (algas verde-azules) en Diques ──
+// Basado en el Marco de Niveles de Alerta de la OMS para aguas recreativas, extendido a
+// 4 niveles (Verde/Amarillo/Naranja/Rojo) siguiendo el mismo formato del "Cianosemáforo"
+// de la Provincia de Buenos Aires. Los cortes de Naranja/Rojo son una extensión propia
+// (la OMS y Bs. As. usan también inspección visual de floración, no solo el número de
+// laboratorio) — por eso el campo "floración visible" puede subir el nivel aunque el
+// valor de laboratorio todavía esté en un tramo más bajo.
+type NivelCiano = { nivel: "VERDE"|"AMARILLO"|"NARANJA"|"ROJO"; color: string; label: string; recomendacion: string };
+
+const clasificarCianobacterias = (bga: number, clorofila: number, floracionVisible?: string): NivelCiano => {
+  const visible = (floracionVisible||"").toUpperCase() === "SI";
+
+  if (visible || bga > 500000 || clorofila > 150) {
+    return { nivel:"ROJO", color:"#ef4444", label:"Rojo — Alerta máxima",
+      recomendacion:"No ingresar al agua. Alejar niños, mascotas y ganado del cuerpo de agua." };
+  }
+  if (bga > 100000 || clorofila > 50) {
+    return { nivel:"NARANJA", color:"#f97316", label:"Naranja — Riesgo alto",
+      recomendacion:"Evitar contacto directo y el consumo del agua sin tratar." };
+  }
+  if (bga > 20000 || clorofila > 10) {
+    return { nivel:"AMARILLO", color:"#eab308", label:"Amarillo — Vigilancia",
+      recomendacion:"Ducharse tras el contacto. Evitar tragar agua." };
+  }
+  return { nivel:"VERDE", color:"#22c55e", label:"Verde — Sin riesgo",
+    recomendacion:"Sin restricciones de uso por cianobacterias." };
+};
+
 const fontFamilies: Record<Tipografia, string> = {
   inter: "'Inter','Segoe UI',sans-serif",
   mono:  "'Courier New','Roboto Mono',monospace",
@@ -442,7 +481,7 @@ const STORAGE_KEY = "watergis_session";
 // Íconos de avatar disponibles — temática de agua/monitoreo ambiental
 const AVATARES = ["💧","🌊","🏞️","💦","🚰","🏔️","🐟","🌿","⚗️","🧪","🔬","📡"];
 
-function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avatar?: string, rol?: string) => void }) {
+function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avatar?: string, rol?: string, acceso_perforaciones?: string) => void }) {
   const [modo, setModo] = useState<"login"|"registro">("login");
 
   // ── Campos de login ──
@@ -487,7 +526,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: string, nombre: string, avat
       });
       const data = await res.json();
       if (data.ok) {
-        onLogin(data.usuario, data.nombre, data.avatar, data.rol);
+        onLogin(data.usuario, data.nombre, data.avatar, data.rol, data.acceso_perforaciones);
       } else {
         setError(data.error || "Usuario o contraseña incorrectos.");
       }
@@ -737,6 +776,7 @@ function CargaDatosForm({
     turb_ntu: "", salinidad_mg_l: "", as_mg_l: "", fluor_mg_l: "", no3_mg_l: "",
     od_mg_l: "", sat_o2_pct: "", clorofila_ug_l: "", algas_bga: "", cloro_libre_mg_l: "",
     dbo_mg_l: "", dqo_mg_l: "", detergentes_mg_l: "", grasas_aceites_mg_l: "",
+    floracion_visible: "NO",
     latitud: prefill?.latitud || "", longitud: prefill?.longitud || "",
   };
   const [form, setForm] = useState(vacio);
@@ -1030,6 +1070,27 @@ function CargaDatosForm({
             ))}
           </div>
 
+          {categoria === "DIQUE" && (
+            <div className="mb-3">
+              <label className={labelClass}>¿Se observa floración de algas a simple vista?</label>
+              <div className="grid grid-cols-2 gap-2">
+                {["NO","SI"].map(op => (
+                  <button
+                    key={op}
+                    type="button"
+                    onClick={()=>setForm(prev=>({...prev, floracion_visible: op}))}
+                    className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                      (form as any).floracion_visible===op ? "border-cyan-500 bg-cyan-500/20 text-cyan-300" : "border-slate-700 text-slate-500 hover:border-slate-500"
+                    }`}
+                  >
+                    {op==="SI" ? "Sí, hay floración visible" : "No"}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">Manchas verdes intensas, espuma o capa densa en la superficie del agua.</p>
+            </div>
+          )}
+
           {error && <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400 text-center">{error}</div>}
           {ok && <div className="mt-3 rounded-xl border border-green-500/40 bg-green-500/10 p-3 text-sm text-green-400 text-center">✅ Punto guardado — ya está visible en el mapa.</div>}
 
@@ -1145,7 +1206,7 @@ function AsistenteAyuda() {
 
 export default function Map() {
   // ── AUTH ──
-  const [sesion, setSesion] = useState<{user:string;nombre:string;avatar?:string;rol?:string}|null>(null);
+  const [sesion, setSesion] = useState<{user:string;nombre:string;avatar?:string;rol?:string;acceso_perforaciones?:string}|null>(null);
   const [loginVisible, setLoginVisible] = useState(true);
   const esAutenticado = sesion !== null && sesion.user !== "publico";
   // Los 3 usuarios históricos (hardcodeados) son admin por compatibilidad; el resto depende de la base de datos
@@ -1160,8 +1221,8 @@ export default function Map() {
 
   const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
 
-  const handleLogin=(user:string,nombre:string,avatar?:string,rol?:string)=>{
-    const s={user,nombre,avatar,rol}; setSesion(s); setLoginVisible(false);
+  const handleLogin=(user:string,nombre:string,avatar?:string,rol?:string,acceso_perforaciones?:string)=>{
+    const s={user,nombre,avatar,rol,acceso_perforaciones}; setSesion(s); setLoginVisible(false);
     if(user!=="publico"){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); }catch{} }
     if(user!=="publico"){
       setMostrarBienvenida(true);
@@ -1477,6 +1538,7 @@ export default function Map() {
     DQO_mg_l: row.dqo_mg_l || "",
     Detergentes_mg_l: row.detergentes_mg_l || "",
     Grasas_Aceites_mg_l: row.grasas_aceites_mg_l || "",
+    Floracion_Visible: row.floracion_visible || "",
     Latitud: row.latitud || "",
     Longitud: row.longitud || "",
   });
@@ -1582,6 +1644,20 @@ export default function Map() {
     });
   }, [points, search, selectedFuente, selectedFiltDept, tipoPunto]);
 
+  // Diques en alerta (Naranja o Rojo) — se calcula sobre TODOS los puntos, no solo los filtrados,
+  // para que el aviso del header no dependa de qué filtro tenga puesto el usuario en ese momento.
+  const diquesEnAlerta = useMemo(() => {
+    return points.filter(p => {
+      if ((p.Tipo_Punto||"").toUpperCase() !== "DIQUE") return false;
+      const nivel = clasificarCianobacterias(
+        parseFloat(String(p.Algas_BGA||"0").replace(",",".")),
+        parseFloat(String(p.Clorofila_ug_l||"0").replace(",",".")),
+        p.Floracion_Visible
+      ).nivel;
+      return nivel==="NARANJA" || nivel==="ROJO";
+    });
+  }, [points]);
+
   // ======================================================
   // KPI
   // ======================================================
@@ -1638,7 +1714,17 @@ export default function Map() {
   // ======================================================
 
   const getMarkerIcon = (point: Punto) => {
-    if(point.Tipo_Punto==="DIQUE") return blueIcon;
+    if(point.Tipo_Punto==="DIQUE") {
+      const nivel = clasificarCianobacterias(
+        parseFloat(String(point.Algas_BGA||"0").replace(",",".")),
+        parseFloat(String(point.Clorofila_ug_l||"0").replace(",",".")),
+        point.Floracion_Visible
+      ).nivel;
+      if(nivel==="ROJO") return blackIcon;
+      if(nivel==="NARANJA") return orangeIcon;
+      if(nivel==="AMARILLO") return yellowIcon;
+      return greenIcon; // VERDE
+    }
     if(point.Tipo_Punto==="RED") return violetIcon;
     if(point.Tipo_Punto==="EFLUENTE") return greyIcon;
     if (selectedVariable==="As") {
@@ -2189,9 +2275,15 @@ export default function Map() {
       const cloroEutro  = base.filter(p=>{const v=num(p.Clorofila_ug_l);return v>=10&&v<50;}).length;
       const cloroAlerta = base.filter(p=>num(p.Clorofila_ug_l)>=50).length;
 
-      const bgaBajo      = base.filter(p=>num(p.Algas_BGA)<5000).length;
-      const bgaModerado  = base.filter(p=>{const v=num(p.Algas_BGA);return v>=5000&&v<10000;}).length;
-      const bgaAlto      = base.filter(p=>num(p.Algas_BGA)>=10000).length;
+      const nivelesCiano = base.map(p => clasificarCianobacterias(num(p.Algas_BGA), parseAs(p.Clorofila_ug_l), p.Floracion_Visible).nivel);
+      const cianoVerde    = nivelesCiano.filter(n=>n==="VERDE").length;
+      const cianoAmarillo = nivelesCiano.filter(n=>n==="AMARILLO").length;
+      const cianoNaranja  = nivelesCiano.filter(n=>n==="NARANJA").length;
+      const cianoRojo     = nivelesCiano.filter(n=>n==="ROJO").length;
+      const diquesNaranjaRojo = base.filter(p => {
+        const n = clasificarCianobacterias(num(p.Algas_BGA), parseAs(p.Clorofila_ug_l), p.Floracion_Visible).nivel;
+        return n==="NARANJA" || n==="ROJO";
+      });
 
       const pct = (n:number) => base.length>0?((n/base.length)*100).toFixed(1):"0";
 
@@ -2307,22 +2399,45 @@ export default function Map() {
     <div class="bar-val" style="color:#ef4444">${cloroAlerta} (${pct(cloroAlerta)}%)</div>
   </div>
 
-  <h2>DISTRIBUCIÓN DE RIESGO — ALGAS BGA (Cianobacterias)</h2>
+  <h2>SEMÁFORO DE CIANOBACTERIAS (Algas BGA)</h2>
+  <p class="nota">Basado en el Marco de Niveles de Alerta de la OMS, en el mismo formato que el "Cianosemáforo" de la Provincia de Buenos Aires (Verde / Amarillo / Naranja / Rojo).</p>
   <div class="bar-row">
-    <div class="bar-label">Bajo (&lt; 5.000 cel/mL)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(bgaBajo)}%"></div></div>
-    <div class="bar-val" style="color:#22c55e">${bgaBajo} (${pct(bgaBajo)}%)</div>
+    <div class="bar-label">🟢 Verde — sin riesgo</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#22c55e;width:${pct(cianoVerde)}%"></div></div>
+    <div class="bar-val" style="color:#22c55e">${cianoVerde} (${pct(cianoVerde)}%)</div>
   </div>
   <div class="bar-row">
-    <div class="bar-label">Moderado (5.000–10.000 cel/mL)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#f59e0b;width:${pct(bgaModerado)}%"></div></div>
-    <div class="bar-val" style="color:#f59e0b">${bgaModerado} (${pct(bgaModerado)}%)</div>
+    <div class="bar-label">🟡 Amarillo — vigilancia</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#eab308;width:${pct(cianoAmarillo)}%"></div></div>
+    <div class="bar-val" style="color:#eab308">${cianoAmarillo} (${pct(cianoAmarillo)}%)</div>
   </div>
   <div class="bar-row">
-    <div class="bar-label">Alto — riesgo de toxinas (&gt; 10.000 cel/mL)</div>
-    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(bgaAlto)}%"></div></div>
-    <div class="bar-val" style="color:#ef4444">${bgaAlto} (${pct(bgaAlto)}%)</div>
+    <div class="bar-label">🟠 Naranja — riesgo alto</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#f97316;width:${pct(cianoNaranja)}%"></div></div>
+    <div class="bar-val" style="color:#f97316">${cianoNaranja} (${pct(cianoNaranja)}%)</div>
   </div>
+  <div class="bar-row">
+    <div class="bar-label">🔴 Rojo — alerta máxima</div>
+    <div class="bar-wrap"><div class="bar-fill" style="background:#ef4444;width:${pct(cianoRojo)}%"></div></div>
+    <div class="bar-val" style="color:#ef4444">${cianoRojo} (${pct(cianoRojo)}%)</div>
+  </div>
+
+  ${diquesNaranjaRojo.length>0?`
+  <h3>Diques en Naranja o Rojo — requieren atención</h3>
+  <table>
+    <thead>${tr(["Dique","Departamento","Algas BGA (cel/mL)","Clorofila (µg/L)","Floración visible","Nivel"],true)}</thead>
+    <tbody>
+      ${diquesNaranjaRojo.map(p=>{
+        const n=clasificarCianobacterias(num(p.Algas_BGA), parseAs(p.Clorofila_ug_l), p.Floracion_Visible);
+        return tr([
+          p.PUNTO_DE_MUESTREO||"-", p.Departamento||"-",
+          num(p.Algas_BGA).toFixed(0), parseAs(p.Clorofila_ug_l).toFixed(1),
+          (p.Floracion_Visible||"").toUpperCase()==="SI"?"Sí":"No",
+          `<span style="color:${n.color};font-weight:bold">${n.label}</span>`
+        ]);
+      }).join("")}
+    </tbody>
+  </table>`:""}
 
   ${puntosCriticos.length>0?`
   <h3>Puntos críticos — Diques en alerta sanitaria</h3>
@@ -2819,6 +2934,22 @@ export default function Map() {
           >
             ☰ <span className="text-cyan-400">WATERGIS</span>
           </button>
+
+          {(["nicolas.doria","admin","inspector1"].includes(sesion?.user||"") || sesion?.acceso_perforaciones==="admin" || sesion?.acceso_perforaciones==="lectura") && (
+            <a href="/perforaciones" className="ml-2 inline-flex items-center gap-1 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20">
+              🪨 Perforaciones
+            </a>
+          )}
+
+          {diquesEnAlerta.length > 0 && (
+            <span
+              title={diquesEnAlerta.map(d=>d.PUNTO_DE_MUESTREO).join(", ")}
+              className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/15 px-3 py-1 text-xs font-semibold text-red-300"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-red-400"></span>
+              {diquesEnAlerta.length} {diquesEnAlerta.length===1 ? "dique en alerta" : "diques en alerta"}
+            </span>
+          )}
 
           {/* Dropdown hamburguesa */}
           {hamburgerOpen && (
@@ -3784,6 +3915,12 @@ export default function Map() {
 
           const popupKey = `${point.PUNTO_DE_MUESTREO}_${point.Localidad}`;
           const activeVar = popupVar[popupKey] ?? cards[0]?.key ?? selectedVariable;
+          const nivelCiano = point.Tipo_Punto==="DIQUE"
+            ? clasificarCianobacterias(
+                parseFloat(String(point.Algas_BGA||"0").replace(",",".")),
+                parseFloat(String(point.Clorofila_ug_l||"0").replace(",",".")),
+                point.Floracion_Visible)
+            : null;
 
           return (
             <Marker key={index} position={[lat,lng]} icon={esAutenticado ? getMarkerIcon(point) : greenIcon}>
@@ -3800,6 +3937,21 @@ export default function Map() {
                       </>
                     )}
                   </div>
+
+                  {/* SEMÁFORO DE CIANOBACTERIAS — solo Diques, visible siempre */}
+                  {nivelCiano && (
+                    <div style={{
+                      background: nivelCiano.color+"22", border:`1px solid ${nivelCiano.color}`,
+                      borderRadius:"10px", padding:"8px 10px", marginBottom:"10px",
+                    }}>
+                      <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                        <span style={{width:"10px",height:"10px",borderRadius:"50%",background:nivelCiano.color,flexShrink:0}}></span>
+                        <span style={{fontSize:"12px",fontWeight:700,color:nivelCiano.color}}>{nivelCiano.label}</span>
+                      </div>
+                      <div style={{fontSize:"10px",color:"#cbd5e1",marginTop:"3px"}}>{nivelCiano.recomendacion}</div>
+                    </div>
+                  )}
+
                   {esAutenticado ? (
                     <>
                       {/* CARDS clicables — dinámicas según tipo de punto */}

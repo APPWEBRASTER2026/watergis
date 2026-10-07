@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const usuarioLimpio = String(usuario).trim().toLowerCase();
 
     const result = await pool.query(
-      "SELECT usuario, nombre, password_hash, avatar, rol FROM usuarios WHERE usuario = $1",
+      "SELECT usuario, nombre, password_hash, avatar, rol, acceso_hidroquimica, acceso_perforaciones FROM usuarios WHERE usuario = $1",
       [usuarioLimpio]
     );
 
@@ -34,7 +34,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, usuario: row.usuario, nombre: row.nombre, avatar: row.avatar || "💧", rol: row.rol || "usuario" });
+    const esHardcodeado = ["nicolas.doria","admin","inspector1"].includes(row.usuario);
+    return NextResponse.json({
+      ok: true, usuario: row.usuario, nombre: row.nombre, avatar: row.avatar || "💧", rol: row.rol || "usuario",
+      acceso_hidroquimica: esHardcodeado ? "admin" : (row.acceso_hidroquimica || "ninguno"),
+      acceso_perforaciones: esHardcodeado ? "admin" : (row.acceso_perforaciones || "ninguno"),
+    });
   } catch (err) {
     console.error("Error en /api/login:", err);
     return NextResponse.json(
