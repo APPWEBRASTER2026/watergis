@@ -2823,6 +2823,7 @@ export default function Map() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#020617]">
+      <style>{`.tiles-oscuros{filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.95) saturate(0.7);}`}</style>
 
       {/* ===== ASISTENTE DE AYUDA (tubo de ensayo, sin costo) ===== */}
       {!loginVisible && <AsistenteAyuda />}
@@ -2937,7 +2938,7 @@ export default function Map() {
 
           {(["nicolas.doria","admin","inspector1"].includes(sesion?.user||"") || sesion?.acceso_perforaciones==="admin" || sesion?.acceso_perforaciones==="lectura") && (
             <a href="/perforaciones" className="ml-2 inline-flex items-center gap-1 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20">
-              🪨 Perforaciones
+              ⛰️ Perforaciones
             </a>
           )}
 
@@ -3826,10 +3827,10 @@ export default function Map() {
       >
         <LayersControl position="topright">
           <LayersControl.BaseLayer checked name={t.oscuro}>
-            <TileLayer attribution="Carto" url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"/>
+            <TileLayer attribution="&copy; OpenStreetMap" className="tiles-oscuros" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"/>
           </LayersControl.BaseLayer>
           <LayersControl.BaseLayer name="OpenStreetMap">
-            <TileLayer attribution="OSM" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
+            <TileLayer attribution="&copy; OpenStreetMap" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"/>
           </LayersControl.BaseLayer>
           <LayersControl.BaseLayer name={t.satelite}>
             <TileLayer attribution="Google" url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"/>

@@ -1,5 +1,7 @@
 "use client";
 
+import "leaflet/dist/leaflet.css";
+
 import { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -40,6 +42,13 @@ export default function PerforacionesPage() {
   const [showForm, setShowForm] = useState(false);
   const [showCampanaForm, setShowCampanaForm] = useState<Perforacion | null>(null);
   const [campanasSel, setCampanasSel] = useState<any[]>([]);
+  const [L, setL] = useState<any>(null);
+  useEffect(() => { import("leaflet").then((m: any) => setL(m.default || m)); }, []);
+  const iconoColor = (color: string) => L.divIcon({
+    className: "",
+    html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 8px ${color}"></div>`,
+    iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -10],
+  });
 
   useEffect(() => {
     try {
@@ -81,7 +90,7 @@ export default function PerforacionesPage() {
     return (
       <div style={{minHeight:"100vh",background:"#020a0d",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"sans-serif"}}>
         <div style={{textAlign:"center",color:"#fff"}}>
-          <div style={{fontSize:34,marginBottom:10}}>🪨</div>
+          <div style={{fontSize:34,marginBottom:10}}>⛰️</div>
           <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>PerforacionesGIS</div>
           <div style={{fontSize:12,color:"#94a3b8",marginBottom:16}}>Iniciá sesión desde WATERGIS para entrar a este módulo.</div>
           <a href="/" style={{color:"#22d3ee",fontSize:12}}>← Volver al login</a>
@@ -92,13 +101,14 @@ export default function PerforacionesPage() {
 
   return (
     <div style={{minHeight:"100vh",background:"#020a0d",fontFamily:"sans-serif",color:"#e2e8f0"}}>
+      <style>{`.tiles-oscuros{filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.95) saturate(0.7);}`}</style>
       {/* HEADER */}
       <div style={{padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #1e293b"}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <div style={{fontSize:14,fontWeight:700,color:"#fbbf24"}}>🪨 PerforacionesGIS</div>
+          <div style={{fontSize:14,fontWeight:700,color:"#fbbf24"}}>⛰️ PerforacionesGIS</div>
           <div style={{display:"flex",background:"#0f172a",borderRadius:8,padding:3}}>
             <a href="/" style={{color:"#64748b",fontSize:10,fontWeight:600,padding:"5px 12px",textDecoration:"none"}}>💧 Hidroquímica</a>
-            <div style={{background:"#a16207",color:"#fff",fontSize:10,fontWeight:600,padding:"5px 12px",borderRadius:6}}>🪨 Perforaciones</div>
+            <div style={{background:"#a16207",color:"#fff",fontSize:10,fontWeight:600,padding:"5px 12px",borderRadius:6}}>⛰️ Perforaciones</div>
           </div>
           {enAlerta.length>0 && (
             <span style={{display:"inline-flex",alignItems:"center",gap:6,borderRadius:20,border:"1px solid rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.15)",padding:"4px 11px",fontSize:11,fontWeight:600,color:"#fca5a5"}}>
@@ -126,14 +136,14 @@ export default function PerforacionesPage() {
 
       {/* MAPA */}
       <div style={{height:"60vh",margin:"0 20px 20px",borderRadius:12,overflow:"hidden",border:"1px solid #1e293b"}}>
-        <MapContainer center={[-28.46, -65.78]} zoom={9} style={{height:"100%",width:"100%"}}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="&copy; Carto" />
+        {L && <MapContainer center={[-28.46, -65.78]} zoom={9} style={{height:"100%",width:"100%"}}>
+          <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" className="tiles-oscuros" />
           {perforaciones.map(p => {
             const lat = num(p.latitud), lng = num(p.longitud);
             if (!lat || !lng) return null;
             const alerta = clasificarAlerta(p);
             return (
-              <Marker key={p.id} position={[lat,lng]}>
+              <Marker key={p.id} position={[lat,lng]} icon={iconoColor(alerta.color)}>
                 <Popup minWidth={260}>
                   <div style={{fontFamily:"sans-serif"}}>
                     <div style={{fontWeight:700,fontSize:13}}>{p.nombre}</div>
@@ -157,7 +167,7 @@ export default function PerforacionesPage() {
               </Marker>
             );
           })}
-        </MapContainer>
+        </MapContainer>}
       </div>
 
       {/* MODAL: nueva perforación */}
