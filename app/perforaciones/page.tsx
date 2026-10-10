@@ -55,6 +55,7 @@ export default function PerforacionesPage() {
       const saved = localStorage.getItem(SESSION_KEY);
       if (saved) setSesion(JSON.parse(saved));
     } catch {}
+    try { sessionStorage.setItem("watergis_area","perf"); } catch {}
     setCargandoSesion(false);
   }, []);
 
@@ -81,6 +82,8 @@ export default function PerforacionesPage() {
     sesion?.acceso_perforaciones === "admin"
   );
 
+  const tieneAcceso = esAutenticado && (["nicolas.doria","admin","inspector1"].includes(sesion!.user) || sesion?.acceso_perforaciones==="admin" || sesion?.acceso_perforaciones==="lectura");
+
   const enAlerta = useMemo(() => perforaciones.filter(p => clasificarAlerta(p).nivel !== "OK"), [perforaciones]);
   const caudalTotal = useMemo(() => perforaciones.reduce((acc,p) => acc + num(p.caudal_actual_m3h), 0), [perforaciones]);
 
@@ -99,6 +102,19 @@ export default function PerforacionesPage() {
     );
   }
 
+  if (!tieneAcceso) {
+    return (
+      <div style={{minHeight:"100vh",background:"#020a0d",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"sans-serif"}}>
+        <div style={{textAlign:"center",color:"#fff",maxWidth:340}}>
+          <div style={{fontSize:34,marginBottom:10}}>⛰️</div>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>Sin acceso a Perforaciones</div>
+          <div style={{fontSize:12,color:"#94a3b8",marginBottom:16}}>Tu cuenta no tiene permiso para este módulo. Pedile a un administrador que te lo habilite.</div>
+          <a href="/" style={{color:"#22d3ee",fontSize:12}}>← Volver a Hidroquímica</a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{minHeight:"100vh",background:"#020a0d",fontFamily:"sans-serif",color:"#e2e8f0"}}>
       <style>{`.tiles-oscuros{filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.95) saturate(0.7);}`}</style>
@@ -107,7 +123,7 @@ export default function PerforacionesPage() {
         <div style={{display:"flex",alignItems:"center",gap:14}}>
           <div style={{fontSize:14,fontWeight:700,color:"#fbbf24"}}>⛰️ PerforacionesGIS</div>
           <div style={{display:"flex",background:"#0f172a",borderRadius:8,padding:3}}>
-            <a href="/" style={{color:"#64748b",fontSize:10,fontWeight:600,padding:"5px 12px",textDecoration:"none"}}>💧 Hidroquímica</a>
+            <a href="/" onClick={()=>{ try { sessionStorage.setItem("watergis_area","hidro"); } catch {} }} style={{color:"#64748b",fontSize:10,fontWeight:600,padding:"5px 12px",textDecoration:"none"}}>💧 Hidroquímica</a>
             <div style={{background:"#a16207",color:"#fff",fontSize:10,fontWeight:600,padding:"5px 12px",borderRadius:6}}>⛰️ Perforaciones</div>
           </div>
           {enAlerta.length>0 && (

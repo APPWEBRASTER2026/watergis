@@ -1204,6 +1204,36 @@ function AsistenteAyuda() {
   );
 }
 
+// ======================================================
+// SELECTOR DE ÁREA — se muestra tras el login a quien tiene acceso a más de un módulo
+// ======================================================
+function SelectorArea({ nombre, onHidro, onPerf }: { nombre: string; onHidro: () => void; onPerf: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center overflow-y-auto py-8" style={{background:"radial-gradient(ellipse at top left, #0c2d3d 0%, #041318 60%, #020a0d 100%)"}}>
+      <div className="w-full max-w-xl mx-4 text-center">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 mb-4"><span className="text-3xl">💧</span></div>
+        <h1 className="text-3xl font-black text-cyan-400 tracking-tight">WATERGIS</h1>
+        <p className="text-slate-300 text-sm mt-2 mb-8">Bienvenido, {nombre} — elegí un área</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button onClick={onHidro} className="rounded-2xl border-2 border-cyan-600 bg-cyan-600/10 p-6 text-left transition-colors hover:bg-cyan-600/20">
+            <div className="text-4xl mb-3">💧</div>
+            <div className="text-lg font-bold text-white">Hidroquímica</div>
+            <div className="text-xs text-cyan-300 mt-1">Pozos, Diques, Red, Efluentes</div>
+            <div className="mt-4 rounded-lg bg-cyan-400 py-2 text-center text-sm font-bold text-slate-900">Entrar</div>
+          </button>
+          <button onClick={onPerf} className="rounded-2xl border-2 border-amber-600 bg-amber-600/10 p-6 text-left transition-colors hover:bg-amber-600/20">
+            <div className="text-4xl mb-3">⛰️</div>
+            <div className="text-lg font-bold text-white">Perforaciones</div>
+            <div className="text-xs text-amber-300 mt-1">Pozos, caudales, niveles</div>
+            <div className="mt-4 rounded-lg bg-amber-400 py-2 text-center text-sm font-bold text-slate-900">Entrar</div>
+          </button>
+        </div>
+        <p className="mt-6 text-[11px] text-slate-500">Podés cambiar de área en cualquier momento desde el menú superior</p>
+      </div>
+    </div>
+  );
+}
+
 export default function Map() {
   // ── AUTH ──
   const [sesion, setSesion] = useState<{user:string;nombre:string;avatar?:string;rol?:string;acceso_perforaciones?:string}|null>(null);
@@ -1211,6 +1241,7 @@ export default function Map() {
   const esAutenticado = sesion !== null && sesion.user !== "publico";
   // Los 3 usuarios históricos (hardcodeados) son admin por compatibilidad; el resto depende de la base de datos
   const esAdmin = esAutenticado && (sesion?.rol === "admin" || !!USUARIOS[sesion?.user || ""]);
+  const tieneAccesoPerf = esAutenticado && (["nicolas.doria","admin","inspector1"].includes(sesion?.user||"") || sesion?.acceso_perforaciones==="admin" || sesion?.acceso_perforaciones==="lectura");
 
   useEffect(()=>{
     try {
@@ -1221,8 +1252,18 @@ export default function Map() {
 
   const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
 
+  // Selector de área (Hidroquímica / Perforaciones): aparece una vez por sesión del navegador
+  // solo para usuarios con acceso a las dos áreas.
+  const [areaElegida, setAreaElegida] = useState(true);
+  useEffect(() => {
+    if (!tieneAccesoPerf) return;
+    try { if (!sessionStorage.getItem("watergis_area")) setAreaElegida(false); } catch {}
+  }, [tieneAccesoPerf]);
+
   const handleLogin=(user:string,nombre:string,avatar?:string,rol?:string,acceso_perforaciones?:string)=>{
     const s={user,nombre,avatar,rol,acceso_perforaciones}; setSesion(s); setLoginVisible(false);
+    try { sessionStorage.removeItem("watergis_area"); } catch {}
+    if (user!=="publico" && (["nicolas.doria","admin","inspector1"].includes(user) || acceso_perforaciones==="admin" || acceso_perforaciones==="lectura")) setAreaElegida(false);
     if(user!=="publico"){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); }catch{} }
     if(user!=="publico"){
       setMostrarBienvenida(true);
@@ -1232,6 +1273,7 @@ export default function Map() {
 
   const handleLogout=()=>{
     setSesion(null); setLoginVisible(true);
+    try { sessionStorage.removeItem("watergis_area"); } catch {}
     try{ localStorage.removeItem(STORAGE_KEY); }catch{}
     setUserMenuOpen(false);
   };
@@ -2830,6 +2872,13 @@ export default function Map() {
 
       {/* ===== PANTALLA DE LOGIN ===== */}
       {loginVisible && <LoginScreen onLogin={handleLogin} />}
+      {!loginVisible && tieneAccesoPerf && !areaElegida && (
+        <SelectorArea
+          nombre={sesion?.nombre || ""}
+          onHidro={() => { try { sessionStorage.setItem("watergis_area","hidro"); } catch {} setAreaElegida(true); }}
+          onPerf={() => { try { sessionStorage.setItem("watergis_area","perf"); } catch {} window.location.href = "/perforaciones"; }}
+        />
+      )}
 
       {/* ===== BIENVENIDA AL INGRESAR ===== */}
       {mostrarBienvenida && sesion && (
