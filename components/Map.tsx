@@ -1228,7 +1228,7 @@ function SelectorArea({ nombre, onHidro, onPerf }: { nombre: string; onHidro: ()
             <div className="mt-4 rounded-lg bg-amber-400 py-2 text-center text-sm font-bold text-slate-900">Entrar</div>
           </button>
         </div>
-        <p className="mt-6 text-[11px] text-slate-500">Podés cambiar de área en cualquier momento desde el menú superior</p>
+        <p className="mt-6 text-[11px] text-slate-500">Para cambiar de área, cerrá sesión y volvé a ingresar</p>
       </div>
     </div>
   );
@@ -2985,11 +2985,6 @@ export default function Map() {
             ☰ <span className="text-cyan-400">WATERGIS</span>
           </button>
 
-          {(["nicolas.doria","admin","inspector1"].includes(sesion?.user||"") || sesion?.acceso_perforaciones==="admin" || sesion?.acceso_perforaciones==="lectura") && (
-            <a href="/perforaciones" className="ml-2 inline-flex items-center gap-1 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20">
-              ⛰️ Perforaciones
-            </a>
-          )}
 
           {diquesEnAlerta.length > 0 && (
             <span

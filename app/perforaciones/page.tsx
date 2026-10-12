@@ -122,10 +122,6 @@ export default function PerforacionesPage() {
       <div style={{padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #1e293b"}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
           <div style={{fontSize:14,fontWeight:700,color:"#fbbf24"}}>⛰️ PerforacionesGIS</div>
-          <div style={{display:"flex",background:"#0f172a",borderRadius:8,padding:3}}>
-            <a href="/" onClick={()=>{ try { sessionStorage.setItem("watergis_area","hidro"); } catch {} }} style={{color:"#64748b",fontSize:10,fontWeight:600,padding:"5px 12px",textDecoration:"none"}}>💧 Hidroquímica</a>
-            <div style={{background:"#a16207",color:"#fff",fontSize:10,fontWeight:600,padding:"5px 12px",borderRadius:6}}>⛰️ Perforaciones</div>
-          </div>
           {enAlerta.length>0 && (
             <span style={{display:"inline-flex",alignItems:"center",gap:6,borderRadius:20,border:"1px solid rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.15)",padding:"4px 11px",fontSize:11,fontWeight:600,color:"#fca5a5"}}>
               <span style={{width:6,height:6,borderRadius:"50%",background:"#ef4444"}}></span>
